@@ -3,6 +3,7 @@
 # Usage (from the project folder): bash tools/finish.sh "Title" [voice.mp3]
 # Env: LOOP_XFADE=10  blend the last N frames toward frame 0 (only when the last shot can't match frame 0 by itself)
 # Needs: frames/f0000.jpg.., work/mix.wav and work/mix_nomusic.wav from mix.py.
+# Optional work/planned.json lists planned flashes / cuts / crossfades so QA doesn't flag them as pops.
 set -euo pipefail
 TITLE="${1:-short}"; VOICE="${2:-voice.mp3}"
 SLUG=$(echo "$TITLE" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-|-$//g')
@@ -33,6 +34,6 @@ ffmpeg -v error -y -framerate 30 -i frames/f%04d.jpg -i work/master.wav \
   -metadata title="$TITLE" "out/$SLUG.mp4"
 ffmpeg -v error -y -i "out/$SLUG.mp4" -i work/master_nomusic.wav -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart \
   "out/${SLUG}_nomusic.mp4"
-python3 tools/qa.py "out/$SLUG.mp4" out/qa_sheet.jpg
+python3 tools/qa.py "out/$SLUG.mp4" out/qa_sheet.jpg work/planned.json
 echo "out/$SLUG.mp4"
 echo "out/${SLUG}_nomusic.mp4"

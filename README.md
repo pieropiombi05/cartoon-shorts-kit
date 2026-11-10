@@ -93,9 +93,10 @@ smile_closed, lick. Modes: stand, stroll, march, sit, fall. `wave` (0..1) raises
 Cards face the camera (yaw only), carry their own plum ink, get a contact blob unless `noBlob`.
 
 **Motion** (`@kit/motion`): `camFromKeys(keys, f, kicks)` — each key `{f, pos, look, fov, roll, dur, cut, ease, via,
-creep}` is the frame the camera ARRIVES; the move into it takes `dur` frames (default 30, smootherstep); holds creep
-slowly toward `look`; `cut: true` = hard cut; `via` = curved path; kicks = 7-frame flip shakes on impacts.
-`idle(f, seed)` → `{tilt, headTilt}`, `blinkAt(f, seed)`, `walk(f, a, b, dist)` → `{d, phase}`, easing helpers.
+creep}` is the frame the camera ARRIVES; the move into it takes `dur` frames (default 24, smootherstep); holds creep
+slowly toward `look` (default 0.042 of the distance per second); `cut: true` = hard cut; `via` = curved path; kicks =
+7-frame flip shakes on impacts. `idle(f, seed, amp)` → `{tilt, headTilt}` (tiny on purpose), `blinkAt(f, seed)`,
+`walk(f, a, b, dist)` → `{d, phase}`, easing helpers.
 
 **Effects** (`lib/toon`): fxPuff (300x300), fxStars (420x210), fxBurst, fxSplash, fxCreak (300x300), fxRing, fxNote,
 fxBlob — or any Pen drawing of your own.
@@ -118,6 +119,41 @@ fxBlob — or any Pen drawing of your own.
 Music moods: quirky, calm, mysterious, epic. SFX kinds: whoosh, swoosh, thunk, stamp, ting, sting, rumble, crash,
 collapse, creak, crack, snap, splash, bubbles, pop, clink, rattle, step, steps, hammer, thump, oof, whoa, crowd, laugh,
 cheer, applause, birds, crickets, wind, water, flutter, tick, bell, gasp.
+
+## Measured reference look (`docs/reference/`)
+
+`docs/reference/` holds the style study from mromidev/claude-animated-shorts: `STYLE_BIBLE.md` (script and picture formula
+from 20 reference shorts) and seven measured reports (`motion`, `depth`, `textures`, `characters`, `lighting`,
+`outlines`, `grade`). Their numbers are the targets; "ours" in them means the original bridge short. The ones that matter
+most when planning a video:
+
+- **Camera** (`motion.md`): the camera is almost never dead still (~10 % of frames) but its moves are small and soft:
+  about **6 moves per 10 s**, each a **symmetric ease-in-out glide of ~23 frames** (median peak ~14 px/f at 720 wide,
+  keep it under 25), a typical move is a modest reframe (~100 px, ~23 % zoom), not a trip across the set. Between moves
+  it keeps a slow **push-in (~0.14 % per frame)**. Hard cuts are rare (0-1 per video); big place changes use a cut or a
+  6-8 frame crossfade instead of a long fast fly. Whip pans are rare (~0.5 per minute) and always motion-blurred.
+  Impact shakes flip sign every frame, ~5 px at 1080, gone in 6-8 frames. No hand-held float.
+- **Characters** (`motion.md`, `characters.md`): animated on ones, **no idle loop in holds**; life comes from acting
+  beats that land 0-3 frames before their word, with an instant expression swap covered by a blink. Blinks every
+  0.5-2.3 s, 4 frames (half, shut, shut, half). Walk steps 9-12 frames, bob 3-7 %, lean 1-7°, planted feet.
+- **Depth** (`depth.md`): lens blur on about a third of the screen time (close-ups, mediums, inserts), cInf 10-16 px at
+  1080, focus on the eyes; establishing and wide shots sharp.
+- **Colour / light** (`lighting.md`, `grade.md`): saturated, day median luma ~.57, no crushed blacks, warm key with
+  blue-violet shadows, golden = backlit low sun with violet shadows (never brown); light changes with the story beat.
+- **Ink** (`outlines.md`): world lines ~3 px at 1080 width, near-black, on silhouettes, depth jumps and creases only.
+- **Script** (`STYLE_BIBLE.md`): voice starts on frame 1-4, no intro/outro; hook = paradox stated as fact; "You see,"
+  pivot to the mechanism; ironic payoff as the last words.
+
+## Readability traps (check every still)
+- A prop or effect closer than ~2 m to the lens becomes a huge cut-off blob at the frame edge; re-check props whenever a
+  camera moves.
+- A foreground object cut by the frame edge must still be recognisable, or remove it.
+- One rope disappearing behind a kid reads as a hanging: swings get two ropes and a wide plank.
+- Painted signs lit by a side sun go grey and unreadable: give sign faces enough contrast or an unlit material.
+- Railings at chest height cut through characters: put the lens ~2.5 m up so rails cross legs, not torsos.
+- Flags and emblems must be period-correct and not read as another country's.
+- Back faces of flat cards or signs show as blank blocks; ghost/translucent frames; mirrored or cut-off text.
+- Characters too small in the frame, or a shot with no subject ("the camera looks at the street").
 
 ## Gotchas
 - `story.ts` changes need `node tools/build.mjs` before rendering.

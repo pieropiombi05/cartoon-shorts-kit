@@ -25,10 +25,12 @@ export const noise1 = (t: number, seed = 0) => {
 };
 
 // ---------------- characters ----------------
-/** gentle breathing sway: small body tilt and head tilt in degrees, never frozen */
-export const idle = (f: number, seed = 1) => {
+/** very small breathing sway (degrees). The measured reference has NO idle motion in holds: life comes from acting beats
+ *  (expression swaps, head turns, gestures landing 0-3 f before their word) and from the camera's slow push-in.
+ *  Keep this tiny (amp 1) or pass amp 0 for fully still characters. */
+export const idle = (f: number, seed = 1, amp = 1) => {
   const t = f / FPS;
-  return { tilt: 1.2 * Math.sin(t * 1.7 + seed * 2.1) + 0.6 * noise1(t * 0.6, seed), headTilt: 2.0 * noise1(t * 0.8, seed + 9) };
+  return { tilt: amp * (0.35 * Math.sin(t * 1.3 + seed * 2.1) + 0.2 * noise1(t * 0.5, seed)), headTilt: amp * 0.6 * noise1(t * 0.6, seed + 9) };
 };
 /** blink: returns 0 (open) .. 1 (closed) lid amount; blinks every 0.5-2.3 s for 4 frames */
 export const blinkAt = (f: number, seed = 1) => {
@@ -52,13 +54,16 @@ export type CamKey = {
   /** frame where the camera ARRIVES at this key (the move into it ends here) */
   f: number;
   pos: V3; look: V3; fov?: number; roll?: number;
-  /** length of the move into this key, frames (default 30). 0 or cut = hard cut at f */
+  /** length of the move into this key, frames (default 24, the measured reference median is ~23 f total, symmetric
+   *  ease-in-out). Keep the peak speed <= 25 px/f at 720 wide: smootherstep peak = 1.875 x move_px / dur.
+   *  A move that would need > 60 f should be a cut instead. 0 or cut = hard cut at f */
   dur?: number; cut?: boolean;
   /** "glide" smootherstep (default), "out" ease-out (reveals), "in" ease-in */
   ease?: "glide" | "out" | "in";
   /** via points for a curved move into this key (Catmull-Rom) */
   via?: V3[];
-  /** slow push-in while holding on this key: fraction of the distance to `look` per second (default 0.025) */
+  /** slow push-in while holding on this key: fraction of the distance to `look` per second (default 0.042, i.e. the
+   *  measured reference median of ~0.14 % per frame; 0.1 for a deliberate push on a punch line; 0 = locked) */
   creep?: number;
 };
 const cr = (p0: V3, p1: V3, p2: V3, p3: V3, t: number): V3 => {
@@ -71,7 +76,7 @@ const along = (pts: V3[], t: number): V3 => {
   return cr(pts[Math.max(0, i - 1)], pts[i], pts[i + 1], pts[Math.min(n, i + 2)], u);
 };
 const crept = (k: CamKey, held: number): V3 => {
-  const c = (k.creep ?? 0.025) * (held / FPS);
+  const c = (k.creep ?? 0.042) * (held / FPS);
   return lerp3(k.pos, k.look, Math.min(0.35, c));
 };
 /** camera at frame f from a key list (sorted by f). Holds creep; moves glide; kicks add decaying flip shakes. */
@@ -80,9 +85,10 @@ export const camFromKeys = (keys: CamKey[], f: number, kicks: { f: number; amp?:
   while (i + 1 < keys.length && keys[i + 1].f <= f) i++;
   const k = keys[i], nx = keys[i + 1];
   let pos: V3, look: V3, fov = k.fov ?? 40, roll = k.roll ?? 0;
-  const dur = nx ? (nx.cut ? 0 : nx.dur ?? 30) : 0;
+  const dur = nx ? (nx.cut ? 0 : nx.dur ?? 24) : 0;
   if (nx && dur > 0 && f > nx.f - dur) {
     const raw = (f - (nx.f - dur)) / dur, t = nx.ease === "out" ? easeOut(raw) : nx.ease === "in" ? easeIn(raw) : smoother(raw);
+    // the move starts from where the creep had got to, and the creep keeps easing out under the move
     const start = crept(k, Math.max(0, nx.f - dur - k.f));
     pos = along([start, ...(nx.via ?? []), nx.pos], t);
     look = lerp3(k.look, nx.look, t);
