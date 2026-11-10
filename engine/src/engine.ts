@@ -26,6 +26,9 @@ export type FrameState = {
   flash?: number;
   /** contact blob colour under characters (multiply), default from the light */
   blob?: string;
+  /** cross-dissolve: `from` is the OUTGOING shot's state at this same frame (keep it moving), t 0..1 = how much of
+   *  THIS (incoming) state shows. Use for time jumps ("Then, one Monday...", "Meanwhile..."): 6-10 frames. */
+  dissolve?: { from: FrameState; t: number };
 };
 export type Story = {
   TOTAL: number;

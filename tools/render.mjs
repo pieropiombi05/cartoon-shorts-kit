@@ -50,7 +50,7 @@ console.log(`rendering ${todo.length} frames (story TOTAL ${total}) at ${Math.ro
 const t0 = Date.now();
 let n = 0;
 for (const f of todo) {
-  const url = await page.evaluate(([f, q]) => { window.renderFrame(f); return document.getElementById("c").toDataURL("image/jpeg", q); }, [f, Q]);
+  const url = await page.evaluate(([f, q]) => { window.renderFrame(f); return window.capture ? window.capture(q) : document.getElementById("c").toDataURL("image/jpeg", q); }, [f, Q]);
   if (failed) { console.error(`failed at frame ${f}`); await browser.close(); process.exit(3); }
   writeFileSync(name(f), Buffer.from(url.split(",")[1], "base64"));
   n++;

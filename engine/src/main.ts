@@ -15,6 +15,17 @@ const eng = new Engine(canvas, W, H, {
 (async () => {
   await story.build(eng);
   (window as any).TOTAL = story.TOTAL;
-  (window as any).renderFrame = (f: number) => { eng.render(f, story.frame(f, eng)); return true; };
+  // every frame is composited onto a 2D canvas so dissolves can mix two rendered states
+  const out = document.createElement("canvas"); out.width = W; out.height = H;
+  const g = out.getContext("2d")!;
+  (window as any).renderFrame = (f: number) => {
+    const s = story.frame(f, eng);
+    if (s.dissolve && s.dissolve.t < 1) {
+      eng.render(f, s.dissolve.from); g.globalAlpha = 1; g.drawImage(canvas, 0, 0);
+      eng.render(f, s); g.globalAlpha = Math.max(0, s.dissolve.t); g.drawImage(canvas, 0, 0); g.globalAlpha = 1;
+    } else { eng.render(f, s); g.globalAlpha = 1; g.drawImage(canvas, 0, 0); }
+    return true;
+  };
+  (window as any).capture = (q: number) => out.toDataURL("image/jpeg", q);
   (window as any).ready = true;
 })().catch((e) => { (window as any).buildError = String(e && e.stack || e); console.error(e); });

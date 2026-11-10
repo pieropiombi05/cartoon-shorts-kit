@@ -4,7 +4,8 @@
 import * as THREE from "three";
 import type { Engine, FrameState } from "@kit/engine";
 import { box, cyl, ground, house, tree, hills, mountains, clouds, sign, mat, V3 } from "@kit/build";
-import { camFromKeys, CamKey, idle, blinkAt, prog, smooth, back, FPS } from "@kit/motion";
+import { camFromKeys, CamKey, idle, blinkAt, talkAt, prog, smooth, back, FPS } from "@kit/motion";
+import { motes, birds, smoke, lightPool } from "@kit/ambient";
 import { charCard, CardPlace, FxPlace } from "@kit/cards";
 import { Outfit, fxPuff, fxStars } from "@kit/lib/toon";
 import { cobbleHD } from "@kit/lib/paint";
@@ -42,6 +43,17 @@ const KEYS: CamKey[] = [
   { f: 140, dur: 30, pos: [1.3, 1.4, -0.9], look: [0.8, 1.0, -2.2], fov: 38 },     // push in to the bread
 ];
 
+// the kid's own line (in a real story: frames from timing.json phrases of that line)
+const KID_LINE: [number, number][] = [[84, 118]];
+
+// ambient life that runs in EVERY shot: nothing on screen is ever fully still
+const life = (f: number) => [
+  ...motes(f, { min: [-2.5, 0.6, -3.2], max: [2.5, 3.2, 0.5] }, 24, 1),        // sun dust in front of the bakery
+  ...smoke(f, [2.4, 6.4, -6.5], 5, 2, "#ece6ea", 90, 2.5, 0.7),               // chimney smoke
+  ...birds(f, [-30, 14, -40], [30, 17, -40], 4, 3, 180),                      // a flock crossing the sky
+  lightPool([0.6, 0.02, -1.3], 3.2, 1.6, "rgba(255,226,140,0.30)", { flat: true, skew: 0.25 }), // warm sun patch on the cobbles
+];
+
 export function frame(f: number, w: Engine): FrameState {
   const cam = camFromKeys(KEYS, f, [{ f: 150, amp: 0.03 }]);
   const rise = smooth(prog(f, 120, 160));
@@ -49,9 +61,9 @@ export function frame(f: number, w: Engine): FrameState {
   const a = idle(f, 1), b = idle(f, 2);
   const cards: CardPlace[] = [
     charCard({ outfit: BAKER, seed: 3, at: [-0.9, 0, -2.0], expr: f < 120 ? "smile" : "shock", tilt: a.tilt, headTilt: a.headTilt, blink: blinkAt(f, 1), wave: f > 40 && f < 70 ? 0.5 + 0.5 * Math.sin(f * 0.5) : undefined }),
-    charCard({ outfit: KID, seed: 5, at: [0.3, 0, -0.9], expr: f < 120 ? "neutral" : "grin", tilt: b.tilt, headTilt: b.headTilt, blink: blinkAt(f, 2), look: -0.6 }),
+    charCard({ outfit: KID, seed: 5, at: [0.3, 0, -0.9], expr: f < 120 ? "neutral" : "grin", tilt: b.tilt, headTilt: b.headTilt, blink: blinkAt(f, 2), look: -0.6, talk: talkAt(f, KID_LINE, 5) }),
   ];
-  const fx: FxPlace[] = [];
+  const fx: FxPlace[] = life(f);
   if (f >= 150 && f < 168) fx.push({ key: "puff" + Math.round(prog(f, 150, 168) * 12), cw: 300, ch: 300, draw: (p) => fxPuff(p, prog(f, 150, 168)), at: [0.6, 1.25, -2.2], w: 1.2, h: 1.2, soft: true });
   if (f >= 152) fx.push({ key: "stars" + (Math.floor(f / 3) % 6), cw: 420, ch: 210, draw: (p) => fxStars(p, (f % 18) / 18), at: [-0.9, 2.6, -2.0], w: 0.9, h: 0.45 });
   void rise;
@@ -59,6 +71,6 @@ export function frame(f: number, w: Engine): FrameState {
   return {
     cam, light: "day", sunRef: { pos: v3(KEYS[0].pos), look: v3(KEYS[0].look) },
     dof: { cInf: f < 75 ? 12 : f > 140 ? 13 : 0, focus: f < 75 ? [-0.9, 1.7, -2.0] : f > 140 ? [0.8, 1.0, -2.2] : undefined },
-    cards, fx, flash: f >= 150 && f < 154 ? [0.8, 0.5, 0.3, 0.1][f - 150] : 0,
+    cards, fx, // no white flash: the reference channel uses none. The puff, stars and a camera kick sell the moment.
   };
 }

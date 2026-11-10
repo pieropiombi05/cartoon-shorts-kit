@@ -103,3 +103,14 @@ export const camFromKeys = (keys: CamKey[], f: number, kicks: { f: number; amp?:
 
 /** the phrase/word timeline written by tools/timing.py, imported by the story: frame of a phrase's start/end */
 export type Phrase = { i: number; text: string; f0: number; f1: number; words?: { w: string; f: number }[] };
+
+/** mouth flaps for a character's own line: spans = [startFrame, endFrame] pairs (from timing.json phrases).
+ *  Returns 0..1 (0 = closed), changing every 3 frames with a seeded open/half/closed pattern, closed at phrase ends. */
+export const talkAt = (f: number, spans: [number, number][], seed = 1): number => {
+  for (const [a, b] of spans) {
+    if (f < a || f >= b - 2) continue;
+    const k = Math.floor((f - a) / 3), h = hash(k * 7.13 + seed * 31.7);
+    return h < 0.22 ? 0 : h < 0.55 ? 0.45 : h < 0.85 ? 0.75 : 1;
+  }
+  return 0;
+};

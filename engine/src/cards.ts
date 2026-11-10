@@ -91,7 +91,7 @@ export class Fx {
 }
 
 // ---------------- what a story asks for ----------------
-type V3 = [number, number, number];
+export type V3 = [number, number, number];
 /** any flat drawing standing in the world, facing the camera (yaw only). Draws on the 600 x 1000 design canvas,
  *  soles at y = 975, unless w/h are given (then a free card w x h metres, anchored at its bottom centre). */
 export type CardPlace = {
@@ -110,6 +110,8 @@ export type CharSpec = {
   outfit: Outfit; at: V3; seed?: number; expr?: Expr; mode?: FrontOpts["mode"]; phase?: number; look?: number;
   blink?: boolean | number; tilt?: number; headTilt?: number; wave?: number; facing?: -1 | 0 | 1; prop?: FrontOpts["prop"];
   scale?: number; mirror?: boolean; roll?: number; noBlob?: boolean; lift?: number;
+  /** 0..1 open mouth while speaking: use talkAt() from motion.ts */
+  talk?: number;
   /** extra drawing on top (props in hand etc.): called after the body with the same Pen */
   extra?: { key: string; draw: (p: Pen) => void };
 };
@@ -117,12 +119,12 @@ const q = (v: number | undefined, n = 40) => (v === undefined ? "_" : String(Mat
 export const charCard = (c: CharSpec, light = (-120 * Math.PI) / 180): CardPlace => {
   const o = c.outfit;
   const key = ["char", JSON.stringify(o), c.seed ?? 1, c.expr ?? "neutral", c.mode ?? "stand", q(c.phase, 24), q(c.look), String(c.blink ?? false),
-    q(c.tilt, 4), q(c.headTilt, 4), q(c.wave, 12), c.facing ?? 0, JSON.stringify(c.prop ?? null), q(c.lift, 1), q(light, 8), c.extra?.key ?? ""].join("|");
+    q(c.tilt, 4), q(c.headTilt, 4), q(c.wave, 12), c.facing ?? 0, JSON.stringify(c.prop ?? null), q(c.lift, 1), q(light, 8), c.extra?.key ?? "", q(c.talk, 3)].join("|");
   return {
     key, at: c.at, scale: c.scale, mirror: c.mirror, roll: c.roll, noBlob: c.noBlob || c.mode === "sit" || c.mode === "fall",
     draw: (p) => {
       bodyFront(p, o, { expr: c.expr, mode: c.mode ?? "stand", phase: c.phase, look: c.look, blink: c.blink, tilt: c.tilt,
-        headTilt: c.headTilt, wave: c.wave, facing: c.facing, prop: c.prop ?? null, seed: c.seed ?? 1, light, lift: c.lift });
+        headTilt: c.headTilt, wave: c.wave, facing: c.facing, prop: c.prop ?? null, seed: c.seed ?? 1, light, lift: c.lift, talk: c.talk });
       c.extra?.draw(p);
     },
   };

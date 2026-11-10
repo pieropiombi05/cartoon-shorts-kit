@@ -53,7 +53,8 @@ frames/ stills/ out/
 import T from "./work/timing.json";
 import type { Engine, FrameState } from "@kit/engine";
 import { box, cyl, cone, sphere, ground, house, tree, hills, mountains, clouds, sign, pivot, mat } from "@kit/build";
-import { camFromKeys, CamKey, idle, blinkAt, walk, prog, smooth, smoother, easeOut, back, spring, FPS } from "@kit/motion";
+import { camFromKeys, CamKey, idle, blinkAt, talkAt, walk, prog, smooth, smoother, easeOut, back, spring, FPS } from "@kit/motion";
+import { motes, rain, leaves, birds, smoke, shafts, lightPool } from "@kit/ambient";
 import { charCard, CardPlace, FxPlace } from "@kit/cards";
 import { Outfit, fxPuff, fxStars, fxBurst, fxSplash, fxCreak, fxRing, fxNote } from "@kit/lib/toon";
 import { grassHD, cobbleHD, stoneHD, planksHD, roofHD, facadeHD, brick } from "@kit/lib/paint";
@@ -69,7 +70,8 @@ export function frame(f: number, w: Engine): FrameState {
     dof: { cInf: 0..16, focus: [x, y, z] },       // px of blur at infinity (0 = sharp, skips the pass)
     cards: [charCard({...}), ...],                // characters (and any standing flat drawing)
     fx: [{ key, cw, ch, draw, at, w, h, soft?, flat? }],
-    flash: 0..1,                                  // white flash (time jumps, impacts)
+    dissolve: { from: FrameState, t: 0..1 },      // 6-10 f cross-dissolve for time jumps (outgoing state, same f)
+    flash: 0..1,                                  // white flash: avoid (the reference channel never uses one)
   };
 }
 ```
@@ -84,7 +86,8 @@ two-tone toon material. Painted textures: `lib/paint` (grass, cobbles, stone, pl
 clouds) and `paint2` (sand, dirt, plaster, boards, marble, blocks, cloth, readable signs).
 
 **Cast** (`@kit/cards`, `lib/toon`): `charCard({outfit, at, seed, expr, mode, phase, look, blink, tilt, headTilt, wave,
-facing, prop, scale, mirror, roll, noBlob, extra})`.
+facing, prop, scale, mirror, roll, noBlob, extra, talk})`. `talk: talkAt(f, spans, seed)` flaps the mouth (changes
+every 3 frames) while that character says their own line; spans come from the line's phrases in `work/timing.json`.
 Outfit: `{jacket, pants, boots, hat: "shako"|"shako_tall"|"cap"|"hair"|"tophat"|"bonnet"|null, cap, hair, dress, belt,
 buttons, sash, sword, rifle, moustache, skin, build: "adult"|"stout"|"kid"}`.
 Expressions: neutral, stern, grin, laugh, whistle, nervous, shock, relief, relief_open, dazed, pained, smile,
@@ -101,6 +104,17 @@ slowly toward `look` (default 0.042 of the distance per second); `cut: true` = h
 **Effects** (`lib/toon`): fxPuff (300x300), fxStars (420x210), fxBurst, fxSplash, fxCreak (300x300), fxRing, fxNote,
 fxBlob — or any Pen drawing of your own.
 
+**Scene life** (`@kit/ambient`): measured on the reference, ~5 % of the pixels keep changing even when the camera is
+still, and only ~4 % of quiet frames are fully still (`docs/reference/ricks-20.md`). Every shot gets ambient life:
+`motes(f, box, n)` (sun dust, pollen, embers, snow), `rain(f, box, n)`, `leaves(f, box, n)`, `birds(f, from, to, n,
+seed, period)`, `smoke(f, at, n)` (chimneys, steam, engines), `shafts(f, at, n)` (god rays), `lightPool(at, w, h, col,
+{flat, skew})` (sun patch from a window, lamp glow). All return FxPlace[] for `fx`, cached, pure in f. Plus extras in
+the background, effects that grow on the narrated word, and story events in frame (doors, objects falling, lights on).
+
+**Transitions** (measured): continuous camera moves inside one set for most changes; `dissolve` 6-10 frames for time
+jumps ("Then, one Monday", "Meanwhile"), both shots moving; a foreground wipe (something crossing close to the lens) for
+big reveals; no white flashes.
+
 ## Tools
 
 | tool | what it does |
@@ -115,6 +129,7 @@ fxBlob — or any Pen drawing of your own.
 | `tools/master.py` | one linear gain to −14 LUFS + −1 dBFS limiter |
 | `tools/finish.sh "Title" voice.mp3` | (LOOP_XFADE=N) master, encode H.264 CRF 17 + AAC, no-music version, QA |
 | `tools/qa.py video sheet` | frozen spans, black frames, loudness, loop seam, sheet |
+| `tools/framestats.py video` | every-frame motion/colour/detail stats + `vsReference` verdict vs the measured channel |
 
 Music moods: quirky, calm, mysterious, epic. SFX kinds: whoosh, swoosh, thunk, stamp, ting, sting, rumble, crash,
 collapse, creak, crack, snap, splash, bubbles, pop, clink, rattle, step, steps, hammer, thump, oof, whoa, crowd, laugh,
@@ -133,7 +148,8 @@ most when planning a video:
   it keeps a slow **push-in (~0.14 % per frame)**. Hard cuts are rare (0-1 per video); big place changes use a cut or a
   6-8 frame crossfade instead of a long fast fly. Whip pans are rare (~0.5 per minute) and always motion-blurred.
   Impact shakes flip sign every frame, ~5 px at 1080, gone in 6-8 frames. No hand-held float.
-- **Characters** (`motion.md`, `characters.md`): animated on ones, **no idle loop in holds**; life comes from acting
+- **Characters** (`motion.md`, `characters.md`): animated on ones, no idle *loop* in holds (but see Scene life: the shot
+  itself never stops moving); life comes from acting
   beats that land 0-3 frames before their word, with an instant expression swap covered by a blink. Blinks every
   0.5-2.3 s, 4 frames (half, shut, shut, half). Walk steps 9-12 frames, bob 3-7 %, lean 1-7°, planted feet.
 - **Depth** (`depth.md`): lens blur on about a third of the screen time (close-ups, mediums, inserts), cInf 10-16 px at
@@ -143,6 +159,10 @@ most when planning a video:
 - **Ink** (`outlines.md`): world lines ~3 px at 1080 width, near-black, on silhouettes, depth jumps and creases only.
 - **Script** (`STYLE_BIBLE.md`): voice starts on frame 1-4, no intro/outro; hook = paradox stated as fact; "You see,"
   pivot to the mechanism; ironic payoff as the last words.
+
+After rendering, `python3 tools/framestats.py out/<slug>.mp4` measures every frame the same way the reference channel
+was measured and prints `vsReference` (in-scene motion, still frames, detail, empty areas, shadow depth, saturation,
+camera peaks) with FIX where the video is off.
 
 ## Readability traps (check every still)
 - A prop or effect closer than ~2 m to the lens becomes a huge cut-off blob at the frame edge; re-check props whenever a
