@@ -13,6 +13,8 @@ export const smoother = (t: number) => { t = clamp01(t); return t * t * t * (t *
 export const easeOut = (t: number) => { t = clamp01(t); return 1 - Math.pow(1 - t, 3); };
 export const easeIn = (t: number) => { t = clamp01(t); return t * t * t; };
 /** overshoot then settle (anticipation-free pop) */
+/** snap: most of the move lands in the first frames, then it settles (reference style: a pose is reached in ~4-5 f) */
+export const snap = (t: number) => { t = clamp01(t); return 1 - Math.pow(1 - t, 5); };
 export const back = (t: number, s = 1.7) => { t = clamp01(t) - 1; return t * t * ((s + 1) * t + s) + 1; };
 /** damped spring 0 -> 1 */
 export const spring = (t: number, k = 9, d = 4.5) => { t = Math.max(0, t); return 1 - Math.exp(-d * t) * Math.cos(k * t); };
@@ -35,7 +37,7 @@ export const idle = (f: number, seed = 1, amp = 1) => {
 
 /** automatic acting from the narration timeline (work/timing.json phrases): the character moves on EVERY phrase and
  *  bobs on stressed words, so a shot is never a still picture while the voice talks.
- *  On each phrase start: a 3-frame anticipation dip, then a gesture picked by seed (arm raise, lean, hop, head turn),
+ *  On each phrase start: a 3-frame anticipation dip, then a gesture that SNAPS in (~85 % in 4 frames) picked by seed (arm raise, lean, hop, head turn),
  *  held through the phrase and relaxed at its end. Word bobs: a 2-3 deg head nod decaying over 6 frames.
  *  Returns {tilt, headTilt, wave, hop}: add tilt/headTilt to idle(), pass wave, and add hop (metres) to the card's y. */
 export const acting = (f: number, phrases: Phrase[], seed = 1, amp = 1) => {
@@ -43,14 +45,15 @@ export const acting = (f: number, phrases: Phrase[], seed = 1, amp = 1) => {
   for (const p of phrases) {
     if (f < p.f0 - 4 || f > p.f1 + 10) continue;
     const kind = Math.floor(hash(p.i + 1, seed) * 4), dir = hash(p.i + 7, seed) < 0.5 ? -1 : 1;
-    const inn = back(prog(f, p.f0 - 1, p.f0 + 7)), out = 1 - smooth(prog(f, p.f1 - 2, p.f1 + 10)), on = inn * out;
+    // snap: ~85 % of the pose lands in 4 frames, then it holds; the release snaps back the same way
+    const inn = snap(prog(f, p.f0 - 1, p.f0 + 8)), out = 1 - snap(prog(f, p.f1 - 1, p.f1 + 8)), on = inn * out;
     const ant = f >= p.f0 - 4 && f < p.f0 - 1 ? -1 : 0;   // anticipation dip
     hop += ant * 0.012;
     if (kind === 0) wave = Math.max(wave, 0.75 * on);                 // arm gesture
     else if (kind === 1) tilt += dir * 7 * on;                         // lean in
-    else if (kind === 2) hop += 0.12 * Math.max(0, Math.sin(Math.PI * prog(f, p.f0, p.f0 + 10)));   // small hop
+    else if (kind === 2) hop += 0.12 * Math.max(0, Math.sin(Math.PI * Math.sqrt(prog(f, p.f0, p.f0 + 9))));   // small hop, fast up
     else headTilt += dir * 11 * on;                                     // head turn/tilt
-    for (const w of p.words ?? []) { const k = f - w.f; if (k >= 0 && k < 6) headTilt += dir * 4 * (1 - k / 6) * (w.w.length > 4 ? 1 : 0.5); }
+    for (const w of p.words ?? []) { const k = f - w.f; if (k >= 0 && k < 6) headTilt += dir * 4 * (k < 2 ? 1 : (6 - k) / 4) * (w.w.length > 4 ? 1 : 0.5); }
   }
   return { tilt: tilt * amp, headTilt: headTilt * amp, wave: Math.min(1, wave * amp), hop: hop * amp };
 };
@@ -71,7 +74,8 @@ export const walk = (f: number, a: number, b: number, dist: number, stride = 0.8
 };
 
 // ---------------- camera ----------------
-export type Cam = { pos: V3; look: V3; fov: number; roll: number };
+/** blur: horizontal motion blur for this frame, signed fraction of the frame width (set by whip cuts) */
+export type Cam = { pos: V3; look: V3; fov: number; roll: number; blur?: number };
 export type CamKey = {
   /** frame where the camera ARRIVES at this key (the move into it ends here) */
   f: number;
@@ -88,6 +92,10 @@ export type CamKey = {
   creep?: number;
   /** sideways slide while holding, 1 = default (~1.5 px/f), 0 = none */
   drift?: number;
+  /** whip cut INTO this key (use with cut: true): the outgoing shot whips sideways for 6 f (accelerating), the cut hides
+   *  in the blur, and this shot whips in and stops dead within 5 f. 1 = whip to the right, -1 = left. The reference
+   *  channel uses ~5 per video, for place and time changes. */
+  whipCut?: 1 | -1;
   /** allow a fast move (the length is NOT raised to keep the peak under ~18 px/f): one per video at most */
   whip?: boolean;
 };
@@ -139,12 +147,29 @@ export const camFromKeys = (keys: CamKey[], f: number, kicks: { f: number; amp?:
     look = lerp3(st.look, nx.look, t);
     fov = lerp(k.fov ?? 40, nx.fov ?? 40, t); roll = lerp(k.roll ?? 0, nx.roll ?? 0, t);
   } else { const st = crept(k, f - k.f, i); pos = st.pos; look = st.look; }
+  // whip cut: yaw the look around the camera, with motion blur from the angular speed
+  const yawAt = (ff: number) => {
+    const A = 38;   // degrees swept on each side of the cut
+    if (nx?.whipCut && ff >= nx.f - 6 && ff < nx.f) { const t = (ff - (nx.f - 6) + 1) / 6; return nx.whipCut * A * t * t * t; }
+    if (k.whipCut && ff >= k.f && ff < k.f + 5) { const t = (ff - k.f + 1) / 5; return -k.whipCut * A * Math.pow(1 - t, 4); }
+    return 0;
+  };
+  const yaw = yawAt(f);
+  let blur = 0;
+  if (yaw !== 0) {
+    const a = THREE_DEG * yaw, dx = look[0] - pos[0], dz = look[2] - pos[2];
+    look = [pos[0] + dx * Math.cos(a) + dz * Math.sin(a), look[1], pos[2] - dx * Math.sin(a) + dz * Math.cos(a)];
+    const hfov = 2 * Math.atan(Math.tan((fov * Math.PI) / 360) * 0.5625) / THREE_DEG;
+    const speed = Math.abs(yaw - yawAt(f - 1)) > Math.abs(yawAt(f + 1) - yaw) ? yaw - yawAt(f - 1) : yawAt(f + 1) - yaw;
+    blur = Math.max(-0.35, Math.min(0.35, (-speed / hfov) * 0.6));   // 0.6 = shutter, fraction of the frame width
+  }
   for (const kk of kicks) {
     const n = f - kk.f;
     if (n >= 0 && n < 7) { const a = (kk.amp ?? 0.06) * (1 - n / 7) * (n % 2 ? -1 : 1); pos = [pos[0] + a, pos[1] + a * 0.6, pos[2]]; look = [look[0] + a, look[1] + a * 0.6, look[2]]; }
   }
-  return { pos, look, fov, roll };
+  return { pos, look, fov, roll, blur };
 };
+const THREE_DEG = Math.PI / 180;
 
 /** the phrase/word timeline written by tools/timing.py, imported by the story: frame of a phrase's start/end */
 export type Phrase = { i: number; text: string; f0: number; f1: number; words?: { w: string; f: number }[] };

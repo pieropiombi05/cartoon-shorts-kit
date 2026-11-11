@@ -117,6 +117,11 @@ fxBlob — or any Pen drawing of your own.
   back and forth, each on its own clock. 9:16 frames are only about ±1.7 m wide at 8 m: place extras IN DEPTH along the
   camera axis (at the counter, behind the bar, across the back), not off to the sides.
 - `camFromKeys` now drifts in holds and stretches any move so its peak stays under ~18 px/f (`whip: true` to allow one).
+- **Snap**: `acting()` gestures land ~85 % of the pose in 4 frames, then hold (`snap()` easing in motion.ts); use it
+  for any pose change you animate by hand too.
+- **Whip cut**: a key with `cut: true, whipCut: 1 | -1` whips the outgoing shot sideways for 6 frames (accelerating, with
+  motion blur), hides the cut in the blur, and the new shot whips in and stops dead in ~4 frames. The reference uses
+  about 5 per video for place and time changes; continuous moves and dissolves cover the rest.
 - Bar example (example/story.ts) before → after, 5 s at 0.33 scale: fully still quiet frames 79 % → 14 %, flat area
   ~50 % → ~30 %.
 

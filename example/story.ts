@@ -17,7 +17,7 @@ import { Outfit, fxStars } from "@kit/lib/toon";
 import { boards, plaster } from "@kit/paint2";
 
 // In a real project these come from the voice:  import T from "./work/timing.json";  TOTAL = T.frames; PH = T.phrases
-export const TOTAL = 6 * FPS;
+export const TOTAL = 7 * FPS;
 const PH: Phrase[] = [0, 45, 90, 135].map((f0, i) => ({ i, text: "", f0, f1: f0 + 40, words: [0, 12, 24].map((d) => ({ w: "word", f: f0 + d })) }));
 
 const BARMAN: Outfit = { jacket: "#f2efe6", pants: "#2b2b30", boots: "#2b2120", hat: "hair", hair: "#2b1d14", moustache: "#2b1d14", build: "stout" };
@@ -52,7 +52,7 @@ export function build(w: Engine) {
     { at: [2.1, 0, -1.6], act: "laugh", seed: 13 },
     { at: [-0.4, 0, -3.6], act: "chat", seed: 14, scale: 0.95 },  { at: [1.9, 0, -3.6], act: "react", seed: 15, mirror: true, scale: 0.95 },   // behind the bar
     { at: [-1.1, 0, -3.5], act: "point", seed: 16, scale: 0.95 },                                                     // second barman
-    { at: [-3.2, 0, 0.3], to: [3.2, 0, 0.3], act: "walk", seed: 17 },                                                 // someone crossing
+    { at: [-3.4, 0, -0.5], to: [-0.6, 0, -0.5], act: "walk", seed: 17 },                                               // someone crossing behind
   ];
   void mat;
 }
@@ -61,6 +61,7 @@ const KEYS: CamKey[] = [
   { f: 0, pos: [0.4, 1.9, 0.6], look: [0.2, 1.6, -2.4], fov: 40 },               // hook: the barman with the bottle, close
   { f: 70, dur: 40, pos: [0, 2.6, 6.2], look: [0, 1.4, -2.0], fov: 44 },          // pull back: the whole busy bar
   { f: 140, dur: 36, pos: [1.7, 1.75, 1.6], look: [0.7, 1.45, -2.2], fov: 40 },     // push in to the hero at the counter (medium, not a giant face)
+  { f: 160, cut: true, whipCut: 1, pos: [-1.1, 2.2, 3.2], look: [-1.3, 1.5, -3.0], fov: 40 },   // whip cut to the other end of the bar
 ];
 
 export function frame(f: number, w: Engine): FrameState {

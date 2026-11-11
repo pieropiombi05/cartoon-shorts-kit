@@ -23,7 +23,12 @@ const eng = new Engine(canvas, W, H, {
     if (s.dissolve && s.dissolve.t < 1) {
       eng.render(f, s.dissolve.from); g.globalAlpha = 1; g.drawImage(canvas, 0, 0);
       eng.render(f, s); g.globalAlpha = Math.max(0, s.dissolve.t); g.drawImage(canvas, 0, 0); g.globalAlpha = 1;
-    } else { eng.render(f, s); g.globalAlpha = 1; g.drawImage(canvas, 0, 0); }
+    } else {
+      eng.render(f, s); g.globalAlpha = 1; g.drawImage(canvas, 0, 0);
+      // whip motion blur: average copies shifted along the move (equal weights via 1/(i+1) alpha)
+      const b = (s.cam.blur ?? 0) * W;
+      if (Math.abs(b) > 2) { const n = Math.min(24, Math.ceil(Math.abs(b) / 6) + 4); for (let i = 1; i < n; i++) { g.globalAlpha = 1 / (i + 1); g.drawImage(canvas, b * (i / (n - 1) - 0.5), 0); } g.globalAlpha = 1; }
+    }
     return true;
   };
   (window as any).capture = (q: number) => out.toDataURL("image/jpeg", q);

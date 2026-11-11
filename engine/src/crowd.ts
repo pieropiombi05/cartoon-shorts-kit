@@ -4,7 +4,7 @@
 import type { V3 } from "./build";
 import type { Outfit } from "./lib/toon";
 import { charCard, CardPlace } from "./cards";
-import { idle, blinkAt, walk, hash, smooth, prog } from "./motion";
+import { idle, blinkAt, walk, hash, smooth, snap, prog } from "./motion";
 
 export type Act = "chat" | "sip" | "laugh" | "cheer" | "point" | "work" | "walk" | "react";
 export type Extra = { at: V3; act: Act; seed: number; to?: V3; outfit?: Outfit; scale?: number; facing?: -1 | 0 | 1; mirror?: boolean };
@@ -44,7 +44,7 @@ export const extras = (f: number, list: Extra[]): CardPlace[] => list.map((e) =>
   let at = e.at, mode: any = "stand", phase = 0, wave = 0, talk = 0, expr: any = "neutral", tilt = id.tilt, headTilt = id.headTilt, prop: any = null, facing = e.facing ?? 0;
   switch (e.act) {
     case "chat": tilt += t < 0.55 ? 3 * Math.sin(f * 0.18 + s) : 0; talk = t < 0.55 && Math.floor(f / 3) % 3 !== 0 ? 0.4 + 0.5 * hash(Math.floor(f / 3), s) : 0; headTilt += t < 0.55 ? 4 * Math.sin(f * 0.25) : 0; expr = t < 0.55 ? "smile" : "neutral"; break;
-    case "sip": wave = t > 0.45 && t < 0.85 ? smooth(prog(t, 0.45, 0.53)) * (1 - smooth(prog(t, 0.78, 0.85))) * 0.9 : 0; headTilt += wave * 8; expr = t > 0.62 && t < 0.83 ? "smile_closed" : "neutral"; break;
+    case "sip": wave = t > 0.45 && t < 0.85 ? snap(prog(t, 0.45, 0.53)) * (1 - snap(prog(t, 0.78, 0.85))) * 0.9 : 0; headTilt += wave * 8; expr = t > 0.62 && t < 0.83 ? "smile_closed" : "neutral"; break;
     case "laugh": expr = t < 0.6 ? "laugh" : "grin"; tilt += t < 0.6 ? 7 * Math.sin(f * 0.9) : 0; headTilt += t < 0.6 ? -6 : 0; break;
     case "cheer": wave = t < 0.6 ? 0.6 + 0.4 * Math.abs(Math.sin(f * 0.35)) : 0.1; expr = t < 0.6 ? "grin" : "smile"; break;
     case "point": wave = t < 0.5 ? 0.9 : 0; expr = t < 0.5 ? "shock" : "nervous"; break;
