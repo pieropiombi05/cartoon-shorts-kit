@@ -130,6 +130,7 @@ big reveals; no white flashes.
 | `tools/finish.sh "Title" voice.mp3` | (LOOP_XFADE=N) master, encode H.264 CRF 17 + AAC, no-music version, QA |
 | `tools/qa.py video sheet` | frozen spans, black frames, loudness, loop seam, sheet |
 | `tools/framestats.py video` | every-frame motion/colour/detail stats + `vsReference` verdict vs the measured channel |
+| `tools/tighten.py voice out.wav [--tempo]` | leading silence to 0.05 s, shorter pauses (no pause in the hook), optional pitch-safe speed-up |
 
 Music moods: quirky, calm, mysterious, epic. SFX kinds: whoosh, swoosh, thunk, stamp, ting, sting, rumble, crash,
 collapse, creak, crack, snap, splash, bubbles, pop, clink, rattle, step, steps, hammer, thump, oof, whoa, crowd, laugh,
@@ -157,6 +158,7 @@ most when planning a video:
 - **Colour / light** (`lighting.md`, `grade.md`): saturated, day median luma ~.57, no crushed blacks, warm key with
   blue-violet shadows, golden = backlit low sun with violet shadows (never brown); light changes with the story beat.
 - **Ink** (`outlines.md`): world lines ~3 px at 1080 width, near-black, on silhouettes, depth jumps and creases only.
+- **Hook** (`hooks.md`, measured on 20 Ricks Clips shorts): voice at 0.12 s, a 10-17 word sentence in ~3 s at 4 words/s with no pause after it, frame 0 = the strange act already happening with the hero big, the shocking image by 0.5-1 s, one decisive camera move, no loudness trick.
 - **Script** (`STYLE_BIBLE.md`): voice starts on frame 1-4, no intro/outro; hook = paradox stated as fact; "You see,"
   pivot to the mechanism; ironic payoff as the last words.
 
