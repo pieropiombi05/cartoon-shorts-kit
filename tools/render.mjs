@@ -2,6 +2,7 @@
 // Usage (from the project folder):
 //   node tools/render.mjs frames "0-1799"          full frames -> frames/f0000.jpg ...
 //   node tools/render.mjs stills/a "5,40,120"      selected frames -> stills/a/f0005.jpg ...
+//   node tools/render.mjs frames "700-900"         re-render (overwrite) just a range after a fix (RESUME would skip them)
 // Env: SCALE=0.5 (half-size test renders), Q=0.95 (jpeg quality), RESUME=1 (skip frames already on disk).
 // Prints progress and seconds per frame; exits non-zero on any page error.
 import { mkdirSync, existsSync, writeFileSync } from "node:fs";
