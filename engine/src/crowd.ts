@@ -5,7 +5,7 @@ import * as THREE from "three";
 import type { V3 } from "./build";
 import type { Outfit } from "./lib/toon";
 import { charCard, CardPlace } from "./cards";
-import { idle, blinkAt, walk, hash, smooth, snap, prog } from "./motion";
+import { idle, blinkAt, walk, hash, snap, prog } from "./motion";
 
 export type Act = "chat" | "sip" | "laugh" | "cheer" | "point" | "work" | "walk" | "react";
 export type Extra = { at: V3; act: Act; seed: number; to?: V3; outfit?: Outfit; scale?: number; facing?: -1 | 0 | 1; mirror?: boolean; look?: number };
@@ -68,23 +68,43 @@ export const crowdSpots = (min: V3, max: V3, n: number, seed = 1, acts: Act[] = 
 };
 
 /** cards for the extras at frame f. Every act cycles on its own clock (2-5 s), offset by seed, so the crowd never syncs. */
+type Pose = { tilt?: number; headTilt?: number; wave?: number; expr?: any; talk?: boolean; hop?: number };
+// each act is a short cycle of poses; an extra HOLDS each pose dead still (breathing aside) and snaps to the next in
+// ~4 frames. No continuous sine wobble: that read as trembling in the bar demo.
+const ACTS: Record<string, Pose[]> = {
+  chat: [{ headTilt: 4, expr: "smile", talk: true, wave: 0.35 }, { headTilt: -3, expr: "neutral" }, { headTilt: 6, tilt: 2, expr: "grin", talk: true }, { headTilt: -2, expr: "smile" }],
+  sip: [{ expr: "neutral" }, { wave: 0.9, headTilt: 8, expr: "smile_closed" }, { expr: "smile" }],
+  laugh: [{ expr: "laugh", tilt: -5, headTilt: -7, hop: 0.06 }, { expr: "grin", tilt: -2 }, { expr: "laugh", tilt: 4, headTilt: -5 }, { expr: "smile" }],
+  cheer: [{ wave: 1, expr: "grin", hop: 0.08 }, { wave: 0.5, expr: "smile" }, { wave: 1, expr: "grin", tilt: 3 }],
+  point: [{ wave: 0.95, expr: "shock", headTilt: 6 }, { expr: "nervous" }, { wave: 0.95, expr: "shock", headTilt: 4 }, { expr: "neutral", headTilt: -3 }],
+  react: [{ expr: "shock", headTilt: 9, wave: 0.7 }, { expr: "laugh", tilt: -4 }, { expr: "smile" }],
+};
+const pose = (f: number, seed: number, list: Pose[]) => {
+  const hold = Math.round(40 + 40 * hash(seed, 11)), off = Math.floor(hash(seed, 12) * hold * list.length);
+  const k = Math.floor((f + off) / hold), into = (f + off) % hold, a = list[(k + list.length - 1) % list.length], b = list[k % list.length];
+  const t = snap(prog(into, 0, 5)), L = (x?: number, y?: number) => (x ?? 0) + ((y ?? 0) - (x ?? 0)) * t;
+  return { tilt: L(a.tilt, b.tilt), headTilt: L(a.headTilt, b.headTilt), wave: L(a.wave, b.wave), expr: t > 0.5 ? b.expr : a.expr,
+    talk: b.talk && t > 0.5, hop: (b.hop ?? 0) * Math.max(0, Math.sin(Math.PI * prog(into, 0, 8))) };
+};
+
+/** cards for the extras at frame f. Each extra cycles its act's poses on its own clock (1.3-2.7 s per pose). */
 export const extras = (f: number, list: Extra[]): CardPlace[] => list.map((e) => {
-  const s = e.seed, o = e.outfit ?? randomOutfit(s), id = idle(f, s, 1.2), per = Math.round(45 + 60 * hash(s, 11));
-  const t = ((f + Math.floor(hash(s, 12) * per)) % per) / per;   // 0..1 within this extra's own cycle
+  const s = e.seed, o = e.outfit ?? randomOutfit(s), id = idle(f, s, 1);
   let at = e.at, mode: any = "stand", phase = 0, wave = 0, talk = 0, expr: any = "neutral", tilt = id.tilt, headTilt = id.headTilt, prop: any = null, facing = e.facing ?? 0;
-  switch (e.act) {
-    case "chat": tilt += t < 0.55 ? 3 * Math.sin(f * 0.18 + s) : 0; talk = t < 0.55 && Math.floor(f / 3) % 3 !== 0 ? 0.4 + 0.5 * hash(Math.floor(f / 3), s) : 0; headTilt += t < 0.55 ? 4 * Math.sin(f * 0.25) : 0; expr = t < 0.55 ? "smile" : "neutral"; break;
-    case "sip": wave = t > 0.45 && t < 0.85 ? snap(prog(t, 0.45, 0.53)) * (1 - snap(prog(t, 0.78, 0.85))) * 0.9 : 0; headTilt += wave * 8; expr = t > 0.62 && t < 0.83 ? "smile_closed" : "neutral"; break;
-    case "laugh": expr = t < 0.6 ? "laugh" : "grin"; tilt += t < 0.6 ? 7 * Math.sin(f * 0.9) : 0; headTilt += t < 0.6 ? -6 : 0; break;
-    case "cheer": wave = t < 0.6 ? 0.6 + 0.4 * Math.abs(Math.sin(f * 0.35)) : 0.1; expr = t < 0.6 ? "grin" : "smile"; break;
-    case "point": wave = t < 0.5 ? 0.9 : 0; expr = t < 0.5 ? "shock" : "nervous"; break;
-    case "react": expr = t < 0.3 ? "shock" : t < 0.65 ? "laugh" : "smile"; headTilt += t < 0.3 ? 9 : 0; tilt += t >= 0.3 && t < 0.65 ? 6 * Math.sin(f * 0.8) : 0; wave = t < 0.3 ? 0.7 : 0; break;
-    case "work": prop = ["hammer", 0.5 + 0.5 * Math.sin(f * 0.45 + s)]; expr = "stern"; break;
-    case "walk": if (e.to) { const loop = Math.round(150 + 120 * hash(s, 13)), k = (f + Math.floor(hash(s, 14) * loop)) % loop, back = k > loop / 2;
-      const w = walk(back ? k - loop / 2 : k, 0, loop / 2, Math.hypot(e.to[0] - e.at[0], e.to[2] - e.at[2]));
-      const u = w.d / Math.max(0.01, Math.hypot(e.to[0] - e.at[0], e.to[2] - e.at[2])), v = back ? 1 - u : u;
-      at = [e.at[0] + (e.to[0] - e.at[0]) * v, e.at[1], e.at[2] + (e.to[2] - e.at[2]) * v]; mode = w.moving ? "stroll" : "stand"; phase = w.phase;
-      facing = ((e.to[0] - e.at[0]) * (back ? -1 : 1) > 0 ? 1 : -1) as any; } break;
+  if (ACTS[e.act]) {
+    const p = pose(f, s, ACTS[e.act]);
+    tilt += p.tilt; headTilt += p.headTilt; wave = p.wave; expr = p.expr;
+    if (p.talk) talk = Math.floor(f / 3) % 3 !== 0 ? 0.4 + 0.5 * hash(Math.floor(f / 3), s) : 0;   // mouth only
+    at = [at[0], at[1] + p.hop, at[2]];
+  } else if (e.act === "work") {
+    const k = (f + Math.floor(hash(s, 12) * 40)) % 40;   // hammer: snap down, hold, lift slowly
+    prop = ["hammer", k < 4 ? snap(k / 4) : Math.max(0, 1 - (k - 4) / 24)]; expr = "stern";
+  } else if (e.act === "walk" && e.to) {
+    const loop = Math.round(150 + 120 * hash(s, 13)), k = (f + Math.floor(hash(s, 14) * loop)) % loop, back = k > loop / 2;
+    const w = walk(back ? k - loop / 2 : k, 0, loop / 2, Math.hypot(e.to[0] - e.at[0], e.to[2] - e.at[2]));
+    const u = w.d / Math.max(0.01, Math.hypot(e.to[0] - e.at[0], e.to[2] - e.at[2])), v = back ? 1 - u : u;
+    at = [e.at[0] + (e.to[0] - e.at[0]) * v, e.at[1], e.at[2] + (e.to[2] - e.at[2]) * v]; mode = w.moving ? "stroll" : "stand"; phase = w.phase;
+    facing = ((e.to[0] - e.at[0]) * (back ? -1 : 1) > 0 ? 1 : -1) as any;
   }
   return charCard({ outfit: o, at, seed: s, expr, mode, phase, wave, talk, tilt, headTilt, prop, facing, look: e.look, blink: blinkAt(f, s), scale: e.scale, mirror: e.mirror });
 });

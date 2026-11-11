@@ -32,28 +32,29 @@ export const noise1 = (t: number, seed = 0) => {
  *  Add acting() on top for the beats. amp 0 = fully still (only for a deliberate freeze). */
 export const idle = (f: number, seed = 1, amp = 1) => {
   const t = f / FPS;
-  return { tilt: amp * (0.9 * Math.sin(t * 1.6 + seed * 2.1) + 0.5 * noise1(t * 0.7, seed)), headTilt: amp * 1.6 * noise1(t * 0.8, seed + 9) };
+  // slow breathing only (period ~4 s): faster or bigger sway reads as trembling next to the snapped poses
+  return { tilt: amp * (0.5 * Math.sin(t * 1.5 + seed * 2.1) + 0.25 * noise1(t * 0.35, seed)), headTilt: amp * 0.8 * noise1(t * 0.4, seed + 9) };
 };
 
 /** automatic acting from the narration timeline (work/timing.json phrases): the character moves on EVERY phrase and
- *  bobs on stressed words, so a shot is never a still picture while the voice talks.
- *  On each phrase start: a 3-frame anticipation dip, then a gesture that SNAPS in (~85 % in 4 frames) picked by seed (arm raise, lean, hop, head turn),
- *  held through the phrase and relaxed at its end. Word bobs: a 2-3 deg head nod decaying over 6 frames.
+ *  can nod on stressed words (wordNods, off by default), so a shot is never a still picture while the voice talks.
+ *  Poses SNAP and HOLD (the reference: most of a move in 4-5 frames, then dead still). On each phrase start a gesture
+ *  SNAPS in (~85 % in 4 frames), picked by seed (arm raise, lean, lean back, head turn), is held through the phrase and
+ *  released at its end. No anticipation dips or hops: those small up-down twitches read as trembling.
  *  Returns {tilt, headTilt, wave, hop}: add tilt/headTilt to idle(), pass wave, and add hop (metres) to the card's y. */
-export const acting = (f: number, phrases: Phrase[], seed = 1, amp = 1) => {
+export const acting = (f: number, phrases: Phrase[], seed = 1, amp = 1, wordNods = false) => {
   let tilt = 0, headTilt = 0, wave = 0, hop = 0;
   for (const p of phrases) {
     if (f < p.f0 - 4 || f > p.f1 + 10) continue;
     const kind = Math.floor(hash(p.i + 1, seed) * 4), dir = hash(p.i + 7, seed) < 0.5 ? -1 : 1;
     // snap: ~85 % of the pose lands in 4 frames, then it holds; the release snaps back the same way
     const inn = snap(prog(f, p.f0 - 1, p.f0 + 8)), out = 1 - snap(prog(f, p.f1 - 1, p.f1 + 8)), on = inn * out;
-    const ant = f >= p.f0 - 4 && f < p.f0 - 1 ? -1 : 0;   // anticipation dip
-    hop += ant * 0.012;
     if (kind === 0) wave = Math.max(wave, 0.75 * on);                 // arm gesture
     else if (kind === 1) tilt += dir * 7 * on;                         // lean in
-    else if (kind === 2) hop += 0.12 * Math.max(0, Math.sin(Math.PI * Math.sqrt(prog(f, p.f0, p.f0 + 9))));   // small hop, fast up
+    else if (kind === 2) { tilt -= dir * 4 * on; headTilt += dir * 6 * on; }                     // lean back + head turn
     else headTilt += dir * 11 * on;                                     // head turn/tilt
-    for (const w of p.words ?? []) { const k = f - w.f; if (k >= 0 && k < 6) headTilt += dir * 4 * (k < 2 ? 1 : (6 - k) / 4) * (w.w.length > 4 ? 1 : 0.5); }
+    // per-word nods every ~0.3 s read as twitching (the reference holds poses dead still): off unless asked
+    if (wordNods) for (const w of p.words ?? []) { const k = f - w.f; if (k >= 0 && k < 6) headTilt += dir * 4 * (k < 2 ? 1 : (6 - k) / 4) * (w.w.length > 4 ? 1 : 0.5); }
   }
   return { tilt: tilt * amp, headTilt: headTilt * amp, wave: Math.min(1, wave * amp), hop: hop * amp };
 };
@@ -133,10 +134,10 @@ export const moveFrames = (a: CamKey, b: CamKey, peak = 18) => {
 /** camera at frame f from a key list (sorted by f). Holds creep and drift; moves glide with their length raised so the
  *  peak never exceeds ~18 px/f (no jerky whips) unless the key says whip: true; kicks add decaying flip shakes. */
 /** camera energy. 0 = calm glides (moves stretched so the peak stays under ~18 px/f). 1 (default) = reference-like:
- *  moves peak up to ~28 px/f with an early-peaking ease (quick start, clean landing), and the camera steps on the voice:
- *  pass the timing phrases and every phrase start gets a quick 6-frame reframe (push-in, side nudge, or pull-out,
+ *  moves peak up to ~28 px/f with an early-peaking ease (quick start, clean landing), and the camera moves on the voice:
+ *  pass the timing phrases and every phrase start gets a 9-frame camera move that then holds (push-in and small orbit,
  *  alternating). Reference channel: ~29 short camera moves per 10 s, median 6 frames, median peak ~20 px/f.
- *  2 = hyper (punches twice as big, every phrase and every 2nd stressed word). */
+ *  2 = hyper (moves 1.7x bigger). */
 export type CamOpts = { phrases?: Phrase[]; energy?: number };
 export const camFromKeys = (keys: CamKey[], f: number, kicks: { f: number; amp?: number }[] = [], opt: CamOpts = {}): Cam => {
   const energy = opt.energy ?? 1;
@@ -156,23 +157,22 @@ export const camFromKeys = (keys: CamKey[], f: number, kicks: { f: number; amp?:
     look = lerp3(st.look, nx.look, t);
     fov = lerp(k.fov ?? 40, nx.fov ?? 40, t); roll = lerp(k.roll ?? 0, nx.roll ?? 0, t);
   } else { const st = crept(k, f - k.f, i); pos = st.pos; look = st.look; }
-  // beat punches: a quick reframe on every phrase start (and stressed words at energy 2), holding until the next one
+  // beat moves: on every phrase start a real 9-frame camera move that then holds: alternately a push-in and a small
+  // orbit around what the camera looks at (parallax reads clearly as a camera move). No sideways nudges: small sudden
+  // side steps read as the characters trembling, not as the camera (bar demo, user feedback).
   if (opt.phrases && energy > 0) {
     const ph = opt.phrases.filter((p) => p.f0 <= f && p.f0 > k.f);   // only phrases since this key: each shot starts clean
-    const beats: number[] = [];
-    for (const p of ph) { beats.push(p.f0); if (energy >= 2) (p.words ?? []).forEach((w, j) => { if (j % 2 === 1 && w.f <= f && w.f > p.f0 + 6) beats.push(w.f); }); }
-    beats.sort((a, b) => a - b);
-    const d = sub(look, pos), dist = len(d) || 1, side: V3 = [-d[2] / dist, 0, d[0] / dist], amp = energy >= 2 ? 1.8 : 1;
-    let push = 0, nud = 0, prevPush = 0, prevNud = 0;
-    beats.forEach((b, j) => {
-      const kind = j % 3, dir = hash(j, b) < 0.5 ? -1 : 1, t = easeOut(prog(f, b, b + 7));   // cubic: firm start, no jolt
-      prevPush = push; prevNud = nud;
-      if (kind === 0) push = prevPush + 0.06 * amp; else if (kind === 1) nud = prevNud + dir * 0.022 * amp; else push = prevPush - 0.04 * amp;
-      push = lerp(prevPush, push, t); nud = lerp(prevNud, nud, t);
+    const amp = energy >= 2 ? 1.7 : 1;
+    let push = 0, orbit = 0;
+    ph.forEach((p, j) => {
+      const t = smoother(Math.pow(prog(f, p.f0, p.f0 + 9), 0.7));
+      if (j % 2 === 0) push += 0.07 * amp * t; else orbit += (hash(j, p.f0) < 0.5 ? -1 : 1) * 4.5 * amp * t;
     });
-    const pz = Math.max(-0.1, Math.min(0.3, push));
-    pos = [pos[0] + d[0] * pz + side[0] * nud * dist, pos[1] + d[1] * pz, pos[2] + d[2] * pz + side[2] * nud * dist];
-    look = [look[0] + side[0] * nud * dist, look[1], look[2] + side[2] * nud * dist];
+    push = Math.min(0.32, push);
+    const d = sub(look, pos);
+    const a = (orbit * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a);
+    const rd: V3 = [d[0] * ca - d[2] * sa, d[1], d[0] * sa + d[2] * ca];          // orbit: rotate the camera around `look`
+    pos = [look[0] - rd[0] * (1 - push), look[1] - rd[1] * (1 - push), look[2] - rd[2] * (1 - push)];
   }
   // whip cut: yaw the look around the camera, with motion blur from the angular speed
   const yawAt = (ff: number) => {

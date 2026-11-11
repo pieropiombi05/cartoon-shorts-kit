@@ -118,8 +118,9 @@ fxBlob — or any Pen drawing of your own.
   camera axis (at the counter, behind the bar, across the back), not off to the sides.
 - `camFromKeys` now drifts in holds and stretches any move so its peak stays under ~18 px/f (`whip: true` to allow one).
 - **Camera energy** (after "Earth without dust" felt slow): `camFromKeys(KEYS, f, kicks, { phrases: T.phrases, energy: 1 })`.
-  Moves peak up to ~28 px/f with a quick start and a clean landing, and the camera steps on every phrase with a quick
-  6-frame reframe (push-in, side nudge, pull-out). The reference makes ~29 short moves per 10 s; calm glides alone gave
+  Moves peak up to ~28 px/f with a quick start and a clean landing, and the camera moves on every phrase: a 9-frame
+  push-in or small orbit around the subject, then it holds (no small sideways nudges: they read as the characters
+  trembling). The reference makes ~29 short moves per 10 s; calm glides alone gave
   us 11. `energy: 0` = the old calm camera, `2` = hyper.
 - **No continuous shake.** Never add sine/noise wobble to the camera: `tools/shakecheck.py` flags it, and flags flicker
   (things popping for one frame). Kicks (7 frames) on impacts only.
@@ -128,6 +129,9 @@ fxBlob — or any Pen drawing of your own.
   (sand, hills, raised squares made them float).
 - **Weather that doesn't glitch**: `rain()` streaks + `splashes()` + `puddle()` (fixed outline, expanding ripple rings).
   `smoke()` is now opaque inked cartoon puffs and `motes()` are capped tiny: the old see-through circles read as bubbles.
+- **Snap and hold, no wobble**: characters and extras hold poses dead still (slow breathing only) and snap to the next
+  pose in ~4 frames; extras cycle through pose lists instead of sine sways, and `acting()` has no anticipation dips,
+  hops or per-word nods by default. Continuous small motion on characters reads as trembling.
 - **Snap**: `acting()` gestures land ~85 % of the pose in 4 frames, then hold (`snap()` easing in motion.ts); use it
   for any pose change you animate by hand too.
 - **Whip cut**: a key with `cut: true, whipCut: 1 | -1` whips the outgoing shot sideways for 6 frames (accelerating, with
