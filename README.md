@@ -55,6 +55,8 @@ import type { Engine, FrameState } from "@kit/engine";
 import { box, cyl, cone, sphere, ground, house, tree, hills, mountains, clouds, sign, pivot, mat } from "@kit/build";
 import { camFromKeys, CamKey, idle, blinkAt, talkAt, walk, prog, smooth, smoother, easeOut, back, spring, FPS } from "@kit/motion";
 import { motes, rain, leaves, birds, smoke, shafts, lightPool } from "@kit/ambient";
+import { dressWall, shelf, bottle, glass, mug, books, barrel, crate, sack, stool, chair, table, plant, frame, clock, lamp, fan, candle, bunting, scatter, tickProps, animate } from "@kit/props";
+import { extras, crowdSpots, randomOutfit, Extra } from "@kit/crowd";
 import { charCard, CardPlace, FxPlace } from "@kit/cards";
 import { Outfit, fxPuff, fxStars, fxBurst, fxSplash, fxCreak, fxRing, fxNote } from "@kit/lib/toon";
 import { grassHD, cobbleHD, stoneHD, planksHD, roofHD, facadeHD, brick } from "@kit/lib/paint";
@@ -65,7 +67,7 @@ export function build(w: Engine) { /* add meshes under w.root once; keep handles
 export function frame(f: number, w: Engine): FrameState {
   return {
     cam: camFromKeys(KEYS, f, kicks),            // {pos, look, fov, roll}
-    light: "day" | "golden" | "night",
+    light: "day" | "golden" | "night" | "interior",   // interior: warm lamp-lit open-front room
     sunRef: { pos, look },                        // freeze the sun against this camera (usually the shot's first key)
     dof: { cInf: 0..16, focus: [x, y, z] },       // px of blur at infinity (0 = sharp, skips the pass)
     cards: [charCard({...}), ...],                // characters (and any standing flat drawing)
@@ -104,6 +106,20 @@ slowly toward `look` (default 0.042 of the distance per second); `cut: true` = h
 **Effects** (`lib/toon`): fxPuff (300x300), fxStars (420x210), fxBurst, fxSplash, fxCreak (300x300), fxRing, fxNote,
 fxBlob — or any Pen drawing of your own.
 
+**Never static, never empty** (built after a user short measured 60 % fully still frames and ~50 % flat area):
+- `acting(f, T.phrases, seed)` → `{tilt, headTilt, wave, hop}`: the character moves on EVERY phrase (anticipation, then an
+  arm gesture, a lean, a hop or a head turn) and nods on words. Add it on top of `idle()` for every character on screen.
+- `@kit/props`: `dressWall(R, a, b, "bar"|"home"|"office"|"lab"|"shop"|"palace")` fills a whole wall edge to edge
+  (shelves full of bottles/books/jars, frames, clock, plants, an upper row of pictures, bunting); `shelf`, `scatter` for
+  floor clutter; single props. Clocks tick, lamps swing, fans spin, plants and bunting sway, candles flicker: call
+  `tickProps(f)` first thing in `frame()`.
+- `@kit/crowd`: `extras(f, list)` background people who chat (mouths move), sip, laugh, cheer, point, react, work or walk
+  back and forth, each on its own clock. 9:16 frames are only about ±1.7 m wide at 8 m: place extras IN DEPTH along the
+  camera axis (at the counter, behind the bar, across the back), not off to the sides.
+- `camFromKeys` now drifts in holds and stretches any move so its peak stays under ~18 px/f (`whip: true` to allow one).
+- Bar example (example/story.ts) before → after, 5 s at 0.33 scale: fully still quiet frames 79 % → 14 %, flat area
+  ~50 % → ~30 %.
+
 **Scene life** (`@kit/ambient`): measured on the reference, ~5 % of the pixels keep changing even when the camera is
 still, and only ~4 % of quiet frames are fully still (`docs/reference/ricks-20.md`). Every shot gets ambient life:
 `motes(f, box, n)` (sun dust, pollen, embers, snow), `rain(f, box, n)`, `leaves(f, box, n)`, `birds(f, from, to, n,
@@ -130,6 +146,7 @@ big reveals; no white flashes.
 | `tools/finish.sh "Title" voice.mp3` | (LOOP_XFADE=N) master, encode H.264 CRF 17 + AAC, no-music version, QA |
 | `tools/qa.py video sheet` | frozen spans, black frames, loudness, loop seam, sheet |
 | `tools/framestats.py video` | every-frame motion/colour/detail stats + `vsReference` verdict vs the measured channel |
+| `tools/emptycheck.py stills/a` | flags stills with big empty areas (reference: flat ~27 %, largest area ~10 %) |
 | `tools/tighten.py voice out.wav [--tempo]` | leading silence to 0.05 s, shorter pauses (no pause in the hook), optional pitch-safe speed-up |
 
 Music moods: quirky, calm, mysterious, epic. SFX kinds: whoosh, swoosh, thunk, stamp, ting, sting, rumble, crash,

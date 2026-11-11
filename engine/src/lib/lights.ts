@@ -12,7 +12,7 @@ export type LightPreset = {
   sunCol: string; sunI: number; sky: string; ground: string; hemiI: number;         // three lights (unpatched mats only)
   bias: number; normalBias: number;
 };
-export type LightName = "day" | "golden" | "night";
+export type LightName = "day" | "golden" | "night" | "interior";
 export const LIGHTS: Record<LightName, LightPreset> = {
   day: {
     az: 75, el: 48,
@@ -40,6 +40,16 @@ export const LIGHTS: Record<LightName, LightPreset> = {
     top: "#1d2552", hor: "#4a5d96", skyCurve: [0.0, 0.5, 0.6], fog: "#3c4d80", fogNear: 30, fogFar: 260, sunDisc: "#000000",
     sunCol: "#cdd8ff", sunI: 1.6, sky: "#5a6aa0", ground: "#2a2f45", hemiI: 0.4,
     bias: -0.00025, normalBias: 0.015,
+  },
+  interior: { // kit addition: warm lamp-lit room. Key from behind the camera, high, so it reaches back walls of an open-front
+    // set (no ceiling, no front wall); strong warm lit side, lifted cool-violet shade so props read, deep contact shadows.
+    az: 150, el: 58,
+    lit: [1.55, 1.25, 0.9], shade: [0.34, 0.27, 0.36], lift: [0.07, 0.05, 0.09], lambert: 0.4, sideK: 0.84, term: 0.18,
+    charTint: [1.0, 0.92, 0.82], charShade: 0.86, charGrad: 0.08, bodyGrad: 0.22, sideTint: [0.9, 0.86, 0.94],
+    blob: [0.55, 0.48, 0.5], actorShadow: false,
+    top: "#3a2a3a", hor: "#6a4a4a", skyCurve: [0.0, 0.5, 0.6], fog: "#5a3e3a", fogNear: 40, fogFar: 200, sunDisc: "#000000",
+    sunCol: "#ffe2b8", sunI: 3.2, sky: "#ffe6c8", ground: "#7a5a48", hemiI: 0.7,
+    bias: -0.0004, normalBias: 0.02,
   },
 };
 
@@ -69,6 +79,13 @@ export const LOOK: Record<LightName, WorldLook> = {
     cloud: { lit: "#ffd2a8", mid: "#f2a08f", shade: "#a98fc4" },
     bounce: [0.04, 0.02, 0.0],
     sat: 1.1,
+  },
+  interior: {
+    sky: { c: ["#6a4a4a", "#5a3e44", "#4a3440", "#3a2a3a", "#2a2030"], e: [0, 3, 8, 16, 40] },
+    water: { near: "#1c3560", mid: "#162a50", far: "#24366a", crest: "#5a74b0", trough: "#0e1a36", glint: "#e8eeff", shade: [0.5, 0.55, 0.75] },
+    cloud: { lit: "#ffd2a8", mid: "#f2a08f", shade: "#a98fc4" },
+    bounce: [0.05, 0.03, 0.01],
+    sat: 1.12,
   },
   night: {
     sky: { c: ["#4a5d96", "#3e5089", "#33437a", "#283668", "#1b2552"], e: [0, 3, 8, 16, 40] },

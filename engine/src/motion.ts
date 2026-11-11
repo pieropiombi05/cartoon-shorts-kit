@@ -25,12 +25,34 @@ export const noise1 = (t: number, seed = 0) => {
 };
 
 // ---------------- characters ----------------
-/** very small breathing sway (degrees). The measured reference has NO idle motion in holds: life comes from acting beats
- *  (expression swaps, head turns, gestures landing 0-3 f before their word) and from the camera's slow push-in.
- *  Keep this tiny (amp 1) or pass amp 0 for fully still characters. */
+/** breathing sway (degrees) + a slow head drift. Measured on the reference: with the camera quiet ~5 % of the pixels
+ *  still change every frame and only ~4 % of those frames are fully still, so characters are never statues.
+ *  Add acting() on top for the beats. amp 0 = fully still (only for a deliberate freeze). */
 export const idle = (f: number, seed = 1, amp = 1) => {
   const t = f / FPS;
-  return { tilt: amp * (0.35 * Math.sin(t * 1.3 + seed * 2.1) + 0.2 * noise1(t * 0.5, seed)), headTilt: amp * 0.6 * noise1(t * 0.6, seed + 9) };
+  return { tilt: amp * (0.9 * Math.sin(t * 1.6 + seed * 2.1) + 0.5 * noise1(t * 0.7, seed)), headTilt: amp * 1.6 * noise1(t * 0.8, seed + 9) };
+};
+
+/** automatic acting from the narration timeline (work/timing.json phrases): the character moves on EVERY phrase and
+ *  bobs on stressed words, so a shot is never a still picture while the voice talks.
+ *  On each phrase start: a 3-frame anticipation dip, then a gesture picked by seed (arm raise, lean, hop, head turn),
+ *  held through the phrase and relaxed at its end. Word bobs: a 2-3 deg head nod decaying over 6 frames.
+ *  Returns {tilt, headTilt, wave, hop}: add tilt/headTilt to idle(), pass wave, and add hop (metres) to the card's y. */
+export const acting = (f: number, phrases: Phrase[], seed = 1, amp = 1) => {
+  let tilt = 0, headTilt = 0, wave = 0, hop = 0;
+  for (const p of phrases) {
+    if (f < p.f0 - 4 || f > p.f1 + 10) continue;
+    const kind = Math.floor(hash(p.i + 1, seed) * 4), dir = hash(p.i + 7, seed) < 0.5 ? -1 : 1;
+    const inn = back(prog(f, p.f0 - 1, p.f0 + 7)), out = 1 - smooth(prog(f, p.f1 - 2, p.f1 + 10)), on = inn * out;
+    const ant = f >= p.f0 - 4 && f < p.f0 - 1 ? -1 : 0;   // anticipation dip
+    hop += ant * 0.012;
+    if (kind === 0) wave = Math.max(wave, 0.75 * on);                 // arm gesture
+    else if (kind === 1) tilt += dir * 7 * on;                         // lean in
+    else if (kind === 2) hop += 0.12 * Math.max(0, Math.sin(Math.PI * prog(f, p.f0, p.f0 + 10)));   // small hop
+    else headTilt += dir * 11 * on;                                     // head turn/tilt
+    for (const w of p.words ?? []) { const k = f - w.f; if (k >= 0 && k < 6) headTilt += dir * 4 * (1 - k / 6) * (w.w.length > 4 ? 1 : 0.5); }
+  }
+  return { tilt: tilt * amp, headTilt: headTilt * amp, wave: Math.min(1, wave * amp), hop: hop * amp };
 };
 /** blink: returns 0 (open) .. 1 (closed) lid amount; blinks every 0.5-2.3 s for 4 frames */
 export const blinkAt = (f: number, seed = 1) => {
@@ -54,17 +76,20 @@ export type CamKey = {
   /** frame where the camera ARRIVES at this key (the move into it ends here) */
   f: number;
   pos: V3; look: V3; fov?: number; roll?: number;
-  /** length of the move into this key, frames (default 24, the measured reference median is ~23 f total, symmetric
-   *  ease-in-out). Keep the peak speed <= 25 px/f at 720 wide: smootherstep peak = 1.875 x move_px / dur.
-   *  A move that would need > 60 f should be a cut instead. 0 or cut = hard cut at f */
+  /** length of the move into this key, frames (default 24). It is raised automatically (moveFrames) so the peak stays
+   *  under ~18 px/f at 720 wide (reference median peak 20; our jerky videos had 32-50). Start the move earlier
+   *  (place keys further apart) rather than forcing it short. 0 or cut = hard cut at f */
   dur?: number; cut?: boolean;
   /** "glide" smootherstep (default), "out" ease-out (reveals), "in" ease-in */
   ease?: "glide" | "out" | "in";
   /** via points for a curved move into this key (Catmull-Rom) */
   via?: V3[];
-  /** slow push-in while holding on this key: fraction of the distance to `look` per second (default 0.042, i.e. the
-   *  measured reference median of ~0.14 % per frame; 0.1 for a deliberate push on a punch line; 0 = locked) */
+  /** slow push-in while holding on this key: fraction of the distance to `look` per second (default 0.06; 0.1 for a deliberate push on a punch line; 0 = locked) */
   creep?: number;
+  /** sideways slide while holding, 1 = default (~1.5 px/f), 0 = none */
+  drift?: number;
+  /** allow a fast move (the length is NOT raised to keep the peak under ~18 px/f): one per video at most */
+  whip?: boolean;
 };
 const cr = (p0: V3, p1: V3, p2: V3, p3: V3, t: number): V3 => {
   const t2 = t * t, t3 = t2 * t;
@@ -75,25 +100,45 @@ const along = (pts: V3[], t: number): V3 => {
   const n = pts.length - 1, s = Math.min(n - 1e-6, t * n), i = Math.floor(s), u = s - i;
   return cr(pts[Math.max(0, i - 1)], pts[i], pts[i + 1], pts[Math.min(n, i + 2)], u);
 };
-const crept = (k: CamKey, held: number): V3 => {
-  const c = (k.creep ?? 0.042) * (held / FPS);
-  return lerp3(k.pos, k.look, Math.min(0.35, c));
+const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const len = (a: V3) => Math.hypot(a[0], a[1], a[2]);
+/** hold: slow push-in (creep) + slow sideways slide (drift) so the camera never stops dead (reference: holds are only
+ *  ~7 % of frames; between moves the camera keeps drifting at ~1-2 px/f) */
+const crept = (k: CamKey, held: number, idx: number): { pos: V3; look: V3 } => {
+  const sec = held / FPS, c = Math.min(0.35, (k.creep ?? 0.06) * sec);
+  const pos = lerp3(k.pos, k.look, c);
+  const d = sub(k.look, k.pos), dist = len(d) || 1;
+  const side: V3 = [-d[2] / dist, 0, d[0] / dist];               // horizontal axis across the view
+  const dir = hash(idx + 3, k.f) < 0.5 ? -1 : 1;
+  const s = (k.drift ?? 1) * dir * Math.min(0.12, 0.022 * sec) * dist;   // ~1.5 px/f at 720 wide, capped
+  return { pos: [pos[0] + side[0] * s, pos[1], pos[2] + side[2] * s], look: [k.look[0] + side[0] * s * 0.7, k.look[1], k.look[2] + side[2] * s * 0.7] };
 };
-/** camera at frame f from a key list (sorted by f). Holds creep; moves glide; kicks add decaying flip shakes. */
+/** frames a move needs so its peak speed stays under `peak` px/frame at 720 wide (smootherstep peak = 1.875 x px / dur) */
+export const moveFrames = (a: CamKey, b: CamKey, peak = 18) => {
+  const d = sub(a.look, a.pos), dist = Math.max(0.5, (len(d) + len(sub(b.look, b.pos))) / 2), dn = len(d) || 1;
+  const hfov = 2 * Math.atan(Math.tan(((a.fov ?? 40) * Math.PI) / 360) * 0.5625), W = 2 * dist * Math.tan(hfov / 2);
+  const dp = sub(b.pos, a.pos), ax = (dp[0] * d[0] + dp[1] * d[1] + dp[2] * d[2]) / dn;
+  const lat = Math.sqrt(Math.max(0, len(dp) ** 2 - ax * ax)), dl = len(sub(b.look, a.look));
+  const px = (720 * (lat + dl) / 2) / W + (360 * Math.abs(ax)) / dist + 720 * Math.abs((b.fov ?? 40) - (a.fov ?? 40)) / (a.fov ?? 40) / 2;
+  return Math.ceil((1.875 * px) / peak);
+};
+/** camera at frame f from a key list (sorted by f). Holds creep and drift; moves glide with their length raised so the
+ *  peak never exceeds ~18 px/f (no jerky whips) unless the key says whip: true; kicks add decaying flip shakes. */
 export const camFromKeys = (keys: CamKey[], f: number, kicks: { f: number; amp?: number }[] = []): Cam => {
   let i = 0;
   while (i + 1 < keys.length && keys[i + 1].f <= f) i++;
   const k = keys[i], nx = keys[i + 1];
   let pos: V3, look: V3, fov = k.fov ?? 40, roll = k.roll ?? 0;
-  const dur = nx ? (nx.cut ? 0 : nx.dur ?? 24) : 0;
+  let dur = nx ? (nx.cut ? 0 : nx.dur ?? 24) : 0;
+  if (nx && dur > 0 && !nx.whip) dur = Math.min(Math.max(dur, moveFrames(k, nx)), Math.max(dur, nx.f - k.f));
   if (nx && dur > 0 && f > nx.f - dur) {
     const raw = (f - (nx.f - dur)) / dur, t = nx.ease === "out" ? easeOut(raw) : nx.ease === "in" ? easeIn(raw) : smoother(raw);
-    // the move starts from where the creep had got to, and the creep keeps easing out under the move
-    const start = crept(k, Math.max(0, nx.f - dur - k.f));
-    pos = along([start, ...(nx.via ?? []), nx.pos], t);
-    look = lerp3(k.look, nx.look, t);
+    // the move starts from where the hold had drifted to
+    const st = crept(k, Math.max(0, nx.f - dur - k.f), i);
+    pos = along([st.pos, ...(nx.via ?? []), nx.pos], t);
+    look = lerp3(st.look, nx.look, t);
     fov = lerp(k.fov ?? 40, nx.fov ?? 40, t); roll = lerp(k.roll ?? 0, nx.roll ?? 0, t);
-  } else { pos = crept(k, f - k.f); look = k.look; }
+  } else { const st = crept(k, f - k.f, i); pos = st.pos; look = st.look; }
   for (const kk of kicks) {
     const n = f - kk.f;
     if (n >= 0 && n < 7) { const a = (kk.amp ?? 0.06) * (1 - n / 7) * (n % 2 ? -1 : 1); pos = [pos[0] + a, pos[1] + a * 0.6, pos[2]]; look = [look[0] + a, look[1] + a * 0.6, look[2]]; }
