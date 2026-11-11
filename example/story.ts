@@ -12,13 +12,13 @@ import { camFromKeys, CamKey, idle, blinkAt, acting, prog, back, FPS, Phrase } f
 import { motes, lightPool } from "@kit/ambient";
 import { charCard, CardPlace, FxPlace } from "@kit/cards";
 import { dressWall, shelf, bottle, glass, stool, table, lamp, fan, scatter, frame as picture, tickProps } from "@kit/props";
-import { extras, Extra } from "@kit/crowd";
+import { extras, group, snapExtras, Extra } from "@kit/crowd";
 import { Outfit, fxStars } from "@kit/lib/toon";
 import { boards, plaster } from "@kit/paint2";
 
 // In a real project these come from the voice:  import T from "./work/timing.json";  TOTAL = T.frames; PH = T.phrases
 export const TOTAL = 7 * FPS;
-const PH: Phrase[] = [0, 45, 90, 135].map((f0, i) => ({ i, text: "", f0, f1: f0 + 40, words: [0, 12, 24].map((d) => ({ w: "word", f: f0 + d })) }));
+const PH: Phrase[] = [0, 30, 60, 90, 120, 150, 180].map((f0, i) => ({ i, text: "", f0, f1: f0 + 27, words: [0, 9, 18].map((d) => ({ w: "word", f: f0 + d })) }));
 
 const BARMAN: Outfit = { jacket: "#f2efe6", pants: "#2b2b30", boots: "#2b2120", hat: "hair", hair: "#2b1d14", moustache: "#2b1d14", build: "stout" };
 const HERO: Outfit = { jacket: "#1f3a7a", pants: "#1f2340", boots: "#2b2120", hat: "hair", hair: "#2b1d14", buttons: "#e9c46a" };
@@ -48,17 +48,19 @@ export function build(w: Engine) {
   // extras around the tables and along the room
   // 9:16 frames are narrow (about +-1.7 m wide at 8 m): put extras IN DEPTH along the camera axis, not off to the sides
   CROWD = [
-    { at: [-1.7, 0, -1.6], act: "sip", seed: 11 },  { at: [-0.6, 0, -1.6], act: "chat", seed: 12, mirror: true },   // at the counter
+    { at: [-1.7, 0, -1.6], act: "sip", seed: 11 },                                   // at the counter
+    ...group("chat2", [-2.4, 0, -0.9], 12),                                           // a pair talking, left, in depth
     { at: [2.1, 0, -1.6], act: "laugh", seed: 13 },
-    { at: [-0.4, 0, -3.6], act: "chat", seed: 14, scale: 0.95 },  { at: [1.9, 0, -3.6], act: "react", seed: 15, mirror: true, scale: 0.95 },   // behind the bar
-    { at: [-1.1, 0, -3.5], act: "point", seed: 16, scale: 0.95 },                                                     // second barman
-    { at: [-3.4, 0, -0.5], to: [-0.6, 0, -0.5], act: "walk", seed: 17 },                                               // someone crossing behind
+    ...group("chat3", [0.6, 0, -3.65], 14).map((e) => ({ ...e, scale: 0.95 })),     // behind the bar
+    { at: [-1.4, 0, -3.5], act: "point", seed: 16, scale: 0.95 },
+    { at: [-3.4, 0, -0.5], to: [-0.6, 0, -0.5], act: "walk", seed: 17 },             // someone crossing behind
   ];
+  snapExtras(R, CROWD);                                                              // feet on the real floor
   void mat;
 }
 
 const KEYS: CamKey[] = [
-  { f: 0, pos: [0.4, 1.9, 0.6], look: [0.2, 1.6, -2.4], fov: 40 },               // hook: the barman with the bottle, close
+  { f: 0, pos: [0.3, 2.15, 0.4], look: [0.1, 1.85, -3.1], fov: 40 },               // hook: the barman with the bottle, close
   { f: 70, dur: 40, pos: [0, 2.6, 6.2], look: [0, 1.4, -2.0], fov: 44 },          // pull back: the whole busy bar
   { f: 140, dur: 36, pos: [1.7, 1.75, 1.6], look: [0.7, 1.45, -2.2], fov: 40 },     // push in to the hero at the counter (medium, not a giant face)
   { f: 160, cut: true, whipCut: 1, pos: [-1.1, 2.2, 3.2], look: [-1.3, 1.5, -3.0], fov: 40 },   // whip cut to the other end of the bar
@@ -66,7 +68,7 @@ const KEYS: CamKey[] = [
 
 export function frame(f: number, w: Engine): FrameState {
   tickProps(f);                                                     // clocks, lamps, fan
-  const cam = camFromKeys(KEYS, f);
+  const cam = camFromKeys(KEYS, f, [], { phrases: PH, energy: 1 });   // steps on every phrase, punchy moves
   const a = idle(f, 1), act = acting(f, PH, 1);                     // the barman acts on every phrase
   const b = idle(f, 2), act2 = acting(f, PH, 2, 0.6);               // the hero reacts, smaller
   const cards: CardPlace[] = [

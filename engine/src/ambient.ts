@@ -13,7 +13,8 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const frac = (x: number) => x - Math.floor(x);
 
 /** floating motes (dust in sunlight, pollen, embers, snow): slow drift + bob. col e.g. "rgba(255,240,200,.9)" */
-export const motes = (f: number, box: Box, n = 30, seed = 1, col = "rgba(255,244,214,0.85)", size = 0.035, rise = 0.15): FxPlace[] => {
+export const motes = (f: number, box: Box, n = 30, seed = 1, col = "rgba(255,244,214,0.85)", size = 0.02, rise = 0.15): FxPlace[] => {
+  size = Math.min(size, 0.03);   // bigger motes read as bubbles or bugs (seen in the "Earth without dust" short)
   const out: FxPlace[] = [];
   const dy = box.max[1] - box.min[1];
   for (let i = 0; i < n; i++) {
@@ -21,7 +22,7 @@ export const motes = (f: number, box: Box, n = 30, seed = 1, col = "rgba(255,244
     const y = box.min[1] + dy * frac(hy + (f / 30) * rise / dy * (0.6 + hx));
     out.push({
       key: "mote" + col, cw: 64, ch: 64, soft: true,
-      draw: (p: Pen) => { p.ell(32, 32, 22, 22, col.replace(/[\d.]+\)$/, "0.35)"), 0); p.ell(32, 32, 11, 11, col, 0); },
+      draw: (p: Pen) => { p.ell(32, 32, 16, 16, col.replace(/[\d.]+\)$/, "0.25)"), 0); p.ell(32, 32, 10, 10, col, 0); },
       at: [lerp(box.min[0], box.max[0], hx) + 0.15 * Math.sin(f * 0.03 + ph), y, lerp(box.min[2], box.max[2], hz) + 0.1 * Math.cos(f * 0.025 + ph)],
       w: size * (0.7 + hz), h: size * (0.7 + hz),
     });
@@ -29,7 +30,9 @@ export const motes = (f: number, box: Box, n = 30, seed = 1, col = "rgba(255,244
   return out;
 };
 
-/** rain streaks falling through a box (fast, slanted). Pair with a darker grade and splashes for a storm. */
+/** rain: thin fast streaks falling through a box in FRONT of the scene (not stuck on walls). Pair with splashes() on the
+ *  ground, puddle()s and a darker grade. Never draw rain as big teardrop sprites spread over walls: it reads as wallpaper
+ *  and flickers (seen in "Earth without dust"). */
 export const rain = (f: number, box: Box, n = 60, seed = 3, col = "rgba(200,225,255,0.55)", speed = 0.6): FxPlace[] => {
   const out: FxPlace[] = [];
   const dy = box.max[1] - box.min[1];
@@ -77,16 +80,25 @@ export const birds = (f: number, from: V3, to: V3, n = 5, seed = 7, period = 240
   return out;
 };
 
-/** rising smoke / steam puffs from a point (chimney, cup, engine). Loops every `period` frames. */
-export const smoke = (f: number, at: V3, n = 6, seed = 11, col = "#e9e4ea", period = 90, height = 2.2, size = 0.5): FxPlace[] => {
+/** rising smoke / steam: opaque cartoon puffs with an ink outline and a shaded underside (no see-through grey circles:
+ *  those read as bubbles or bugs). Each puff grows, rises, drifts and pops out at the top. Loops every `period` frames. */
+export const smoke = (f: number, at: V3, n = 5, seed = 11, col = "#f2eef2", period = 90, height = 2.2, size = 0.5, shade = "#c9c0d4"): FxPlace[] => {
   const out: FxPlace[] = [];
   for (let i = 0; i < n; i++) {
-    const t = frac(f / period + i / n), s = size * (0.4 + 1.2 * t);
+    const t = frac(f / period + i / n), st = Math.min(5, Math.floor(t * 6));   // 6 cached growth stages
+    const s = size * (0.45 + 1.1 * t) * (t > 0.9 ? (1 - t) * 10 : 1);
+    if (s <= 0.02) continue;
     out.push({
-      key: "smoke" + col + Math.min(4, Math.floor(t * 5)), cw: 160, ch: 160, soft: true,
-      draw: (p: Pen) => { const a = 1 - Math.min(4, Math.floor(t * 5)) / 5; p.ell(80, 80, 70, 64, col.startsWith("#") ? hexA(col, 0.25 + 0.6 * a) : col, 0); },
-      at: [at[0] + 0.3 * Math.sin(t * 5 + hash(i, seed) * 6), at[1] + height * t, at[2]], w: s, h: s,
+      key: "puff" + col + shade + (i % 3), cw: 192, ch: 160,
+      draw: (p: Pen) => {
+        const lobes = [[96, 92, 52], [56, 100, 38], [138, 100, 40], [80, 62, 36], [116, 60, 34]];
+        for (const [x, y, r] of lobes) p.ell(x, y, r + 6, r + 6, "#2b1d2b", 0);       // ink outline
+        for (const [x, y, r] of lobes) p.ell(x, y, r, r, shade, 0);
+        for (const [x, y, r] of lobes) p.ell(x - r * 0.12, y - r * 0.18, r * 0.82, r * 0.78, col, 0);
+      },
+      at: [at[0] + 0.35 * Math.sin(t * 4 + hash(i, seed) * 6), at[1] + height * t, at[2]], w: s, h: s * 0.83, rot: (hash(i + 5, seed) - 0.5) * 0.6 + t * 0.4,
     });
+    void st;
   }
   return out;
 };
@@ -108,6 +120,41 @@ export const shafts = (f: number, at: V3, n = 3, spread = 2, col = "rgba(255,240
       key: "shaft" + col + br, cw: 64, ch: 512, soft: true,
       draw: (p: Pen) => p.poly([[18, 0], [46, 0], [64, 512], [0, 512]], col.replace(/[\d.]+\)$/, String(0.06 + br * 0.04) + ")"), 0),
       at: [at[0] + (i - (n - 1) / 2) * spread / Math.max(1, n - 1), at[1], at[2]], w: 0.6 + 0.2 * i, h: height, rot, face: false,
+    });
+  }
+  return out;
+};
+
+/** a puddle that stays the same shape (fixed outline) with ripple rings that expand and fade, like drops landing.
+ *  Lies flat on the ground. Never animate a puddle by changing its outline every frame: it reads as a glitch. */
+export const puddle = (f: number, at: V3, r = 0.8, seed = 21, col = "#7fb6d9"): FxPlace[] => {
+  const out: FxPlace[] = [{
+    key: "puddle" + col + seed, cw: 256, ch: 160, flat: true, face: false,
+    draw: (p: Pen) => { const pts: [number, number][] = []; for (let i = 0; i < 18; i++) { const a = (i / 18) * Math.PI * 2, k = 0.82 + 0.18 * hash(i, seed); pts.push([128 + Math.cos(a) * 112 * k, 80 + Math.sin(a) * 66 * k]); } p.poly(pts, col, 5); p.ell(100, 64, 40, 10, "rgba(255,255,255,0.55)", 0); },
+    at: [at[0], at[1] + 0.015, at[2]], w: r * 2, h: r * 1.25,
+  }];
+  for (let i = 0; i < 3; i++) {
+    const t = frac(f / 40 + i / 3 + hash(i, seed)), st = Math.min(4, Math.floor(t * 5));
+    out.push({
+      key: "ripple" + st, cw: 128, ch: 80, flat: true, face: false, soft: true,
+      draw: (p: Pen) => { const rx = 18 + st * 10, ry = 10 + st * 6, pts: [number, number][] = []; for (let a = 0; a <= 24; a++) pts.push([64 + Math.cos((a / 24) * 6.283) * rx, 40 + Math.sin((a / 24) * 6.283) * ry]); p.stroke(pts, 5 - st * 0.8, "#eaf6ff"); },
+      at: [at[0] + (hash(i + 3, seed) - 0.5) * r, at[1] + 0.02, at[2] + (hash(i + 7, seed) - 0.5) * r * 0.6], w: r * 0.6, h: r * 0.38,
+    });
+  }
+  return out;
+};
+
+/** splash crowns where rain hits the ground: small 4-frame bursts at seeded spots (cached drawings) */
+export const splashes = (f: number, box: Box, n = 12, seed = 31, col = "#cfe6f7"): FxPlace[] => {
+  const out: FxPlace[] = [];
+  for (let i = 0; i < n; i++) {
+    const per = 14 + Math.floor(hash(i, seed) * 10), k = (f + Math.floor(hash(i + 1, seed) * per)) % per;
+    if (k > 4) continue;
+    const cyc = Math.floor((f + Math.floor(hash(i + 1, seed) * per)) / per);
+    out.push({
+      key: "splash" + k + col, cw: 96, ch: 64,
+      draw: (p: Pen) => { const s = 1 + k * 0.5; for (const a of [-0.9, -0.45, 0, 0.45, 0.9]) p.stroke([[48, 56], [48 + Math.sin(a) * 18 * s, 56 - Math.cos(a) * 16 * s]], 4, col); },
+      at: [box.min[0] + (box.max[0] - box.min[0]) * hash(i + cyc * 7, seed + 2), box.min[1], box.min[2] + (box.max[2] - box.min[2]) * hash(i + cyc * 7, seed + 3)], w: 0.22, h: 0.15,
     });
   }
   return out;

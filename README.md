@@ -54,9 +54,9 @@ import T from "./work/timing.json";
 import type { Engine, FrameState } from "@kit/engine";
 import { box, cyl, cone, sphere, ground, house, tree, hills, mountains, clouds, sign, pivot, mat } from "@kit/build";
 import { camFromKeys, CamKey, idle, blinkAt, talkAt, walk, prog, smooth, smoother, easeOut, back, spring, FPS } from "@kit/motion";
-import { motes, rain, leaves, birds, smoke, shafts, lightPool } from "@kit/ambient";
+import { motes, rain, splashes, puddle, leaves, birds, smoke, shafts, lightPool } from "@kit/ambient";
 import { dressWall, shelf, bottle, glass, mug, books, barrel, crate, sack, stool, chair, table, plant, frame, clock, lamp, fan, candle, bunting, scatter, tickProps, animate } from "@kit/props";
-import { extras, crowdSpots, randomOutfit, Extra } from "@kit/crowd";
+import { extras, crowdSpots, group, snapExtras, groundY, randomOutfit, Extra } from "@kit/crowd";
 import { charCard, CardPlace, FxPlace } from "@kit/cards";
 import { Outfit, fxPuff, fxStars, fxBurst, fxSplash, fxCreak, fxRing, fxNote } from "@kit/lib/toon";
 import { grassHD, cobbleHD, stoneHD, planksHD, roofHD, facadeHD, brick } from "@kit/lib/paint";
@@ -117,6 +117,17 @@ fxBlob — or any Pen drawing of your own.
   back and forth, each on its own clock. 9:16 frames are only about ±1.7 m wide at 8 m: place extras IN DEPTH along the
   camera axis (at the counter, behind the bar, across the back), not off to the sides.
 - `camFromKeys` now drifts in holds and stretches any move so its peak stays under ~18 px/f (`whip: true` to allow one).
+- **Camera energy** (after "Earth without dust" felt slow): `camFromKeys(KEYS, f, kicks, { phrases: T.phrases, energy: 1 })`.
+  Moves peak up to ~28 px/f with a quick start and a clean landing, and the camera steps on every phrase with a quick
+  6-frame reframe (push-in, side nudge, pull-out). The reference makes ~29 short moves per 10 s; calm glides alone gave
+  us 11. `energy: 0` = the old calm camera, `2` = hyper.
+- **No continuous shake.** Never add sine/noise wobble to the camera: `tools/shakecheck.py` flags it, and flags flicker
+  (things popping for one frame). Kicks (7 frames) on impacts only.
+- **Extras in groups, on the ground**: `group("chat2" | "chat3" | "queue" | "audience" | "workers", at, seed)` gives
+  people who interact instead of loners facing the camera; `snapExtras(R, list)` puts their feet on the real ground
+  (sand, hills, raised squares made them float).
+- **Weather that doesn't glitch**: `rain()` streaks + `splashes()` + `puddle()` (fixed outline, expanding ripple rings).
+  `smoke()` is now opaque inked cartoon puffs and `motes()` are capped tiny: the old see-through circles read as bubbles.
 - **Snap**: `acting()` gestures land ~85 % of the pose in 4 frames, then hold (`snap()` easing in motion.ts); use it
   for any pose change you animate by hand too.
 - **Whip cut**: a key with `cut: true, whipCut: 1 | -1` whips the outgoing shot sideways for 6 frames (accelerating, with
@@ -151,6 +162,7 @@ big reveals; no white flashes.
 | `tools/finish.sh "Title" voice.mp3` | (LOOP_XFADE=N) master, encode H.264 CRF 17 + AAC, no-music version, QA |
 | `tools/qa.py video sheet` | frozen spans, black frames, loudness, loop seam, sheet |
 | `tools/framestats.py video` | every-frame motion/colour/detail stats + `vsReference` verdict vs the measured channel |
+| `tools/shakecheck.py video.mp4` | flags camera sway/shake and one-frame flicker (whips and cuts skipped) |
 | `tools/emptycheck.py stills/a` | flags stills with big empty areas (reference: flat ~27 %, largest area ~10 %) |
 | `tools/tighten.py voice out.wav [--tempo]` | leading silence to 0.05 s, shorter pauses (no pause in the hook), optional pitch-safe speed-up |
 

@@ -1,13 +1,43 @@
 // Background extras that keep doing things on their own: chatting (mouths move), drinking, laughing, cheering,
 // pointing, working with a hammer, walking back and forth. A bar, a court, an office or a street is never empty and
 // never frozen. Pure functions of f; put the returned cards into FrameState.cards next to the main characters.
+import * as THREE from "three";
 import type { V3 } from "./build";
 import type { Outfit } from "./lib/toon";
 import { charCard, CardPlace } from "./cards";
 import { idle, blinkAt, walk, hash, smooth, snap, prog } from "./motion";
 
 export type Act = "chat" | "sip" | "laugh" | "cheer" | "point" | "work" | "walk" | "react";
-export type Extra = { at: V3; act: Act; seed: number; to?: V3; outfit?: Outfit; scale?: number; facing?: -1 | 0 | 1; mirror?: boolean };
+export type Extra = { at: V3; act: Act; seed: number; to?: V3; outfit?: Outfit; scale?: number; facing?: -1 | 0 | 1; mirror?: boolean; look?: number };
+
+/** ground height under (x, z): casts a ray down onto the world (cards are on the NOINK layer and are ignored).
+ *  Extras placed at y = 0 on sand, hills or a raised square float or sink: snap them. */
+const ray = new THREE.Raycaster();
+export const groundY = (root: THREE.Object3D, x: number, z: number, fallback = 0): number => {
+  ray.set(new THREE.Vector3(x, 60, z), new THREE.Vector3(0, -1, 0)); ray.layers.set(0);
+  const hit = ray.intersectObject(root, true).find((h) => (h.object as THREE.Mesh).isMesh && h.face && h.face.normal.y > -0.2);
+  return hit ? hit.point.y : fallback;
+};
+/** snap every extra (and its walk target) to the ground. Call once in build() after the world exists. */
+export const snapExtras = (root: THREE.Object3D, list: Extra[]) => list.forEach((e) => {
+  e.at = [e.at[0], groundY(root, e.at[0], e.at[2], e.at[1]), e.at[2]];
+  if (e.to) e.to = [e.to[0], groundY(root, e.to[0], e.to[2], e.to[1]), e.to[2]];
+});
+
+/** ready-made groups that interact, instead of people standing alone facing the camera:
+ *  chat2 (two facing each other), chat3 (three in a ring), queue (a line toward `toward`), audience (rows watching
+ *  `toward`, reacting), workers (hammering around a point). `at` is the group centre on the floor. */
+export const group = (kind: "chat2" | "chat3" | "queue" | "audience" | "workers", at: V3, seed = 1, n = 5, toward?: V3): Extra[] => {
+  const E = (dx: number, dz: number, act: Act, facing: -1 | 0 | 1, k: number): Extra => ({ at: [at[0] + dx, at[1], at[2] + dz], act, seed: seed * 100 + k, facing, look: facing * 0.8 });
+  if (kind === "chat2") return [E(-0.45, 0, "chat", 1, 1), E(0.45, 0.05, "react", -1, 2)];
+  if (kind === "chat3") return [E(-0.55, 0, "chat", 1, 1), E(0.55, 0, "laugh", -1, 2), E(0, -0.5, "react", 0, 3)];
+  if (kind === "workers") return Array.from({ length: n }, (_, k) => E((k - (n - 1) / 2) * 0.8, (k % 2) * 0.4, "work", (k % 2 ? -1 : 1) as -1 | 1, k));
+  const tw = toward ?? [at[0], at[1], at[2] - 5], dx = tw[0] - at[0], dz = tw[2] - at[2], L = Math.hypot(dx, dz) || 1, fx = dx / L, fz = dz / L;
+  const face = (Math.abs(fx) < 0.3 ? 0 : fx > 0 ? 1 : -1) as -1 | 0 | 1;
+  if (kind === "queue") return Array.from({ length: n }, (_, k) => E(-fx * k * 0.75, -fz * k * 0.75, k === 0 ? "point" : k % 2 ? "chat" : "sip", face, k));
+  // audience: rows of 3 across the facing direction, all reacting to what they watch
+  return Array.from({ length: n }, (_, k) => { const row = Math.floor(k / 3), col = (k % 3) - 1; return E(-fz * col * 0.7 - fx * row * 0.8, fx * col * 0.7 - fz * row * 0.8, (["react", "cheer", "point", "laugh"] as Act[])[k % 4], face, k); });
+};
 
 const JACKETS = ["#c0392b", "#2f6fb0", "#3a8f4f", "#8d5fd3", "#e67e22", "#16a085", "#7f8c8d", "#d35480", "#b8860b", "#34495e"];
 const PANTS = ["#2c3e50", "#4a3b2a", "#3b3b48", "#1f3a5f", "#5a4636"];
@@ -56,5 +86,5 @@ export const extras = (f: number, list: Extra[]): CardPlace[] => list.map((e) =>
       at = [e.at[0] + (e.to[0] - e.at[0]) * v, e.at[1], e.at[2] + (e.to[2] - e.at[2]) * v]; mode = w.moving ? "stroll" : "stand"; phase = w.phase;
       facing = ((e.to[0] - e.at[0]) * (back ? -1 : 1) > 0 ? 1 : -1) as any; } break;
   }
-  return charCard({ outfit: o, at, seed: s, expr, mode, phase, wave, talk, tilt, headTilt, prop, facing, blink: blinkAt(f, s), scale: e.scale, mirror: e.mirror });
+  return charCard({ outfit: o, at, seed: s, expr, mode, phase, wave, talk, tilt, headTilt, prop, facing, look: e.look, blink: blinkAt(f, s), scale: e.scale, mirror: e.mirror });
 });

@@ -132,21 +132,48 @@ export const moveFrames = (a: CamKey, b: CamKey, peak = 18) => {
 };
 /** camera at frame f from a key list (sorted by f). Holds creep and drift; moves glide with their length raised so the
  *  peak never exceeds ~18 px/f (no jerky whips) unless the key says whip: true; kicks add decaying flip shakes. */
-export const camFromKeys = (keys: CamKey[], f: number, kicks: { f: number; amp?: number }[] = []): Cam => {
+/** camera energy. 0 = calm glides (moves stretched so the peak stays under ~18 px/f). 1 (default) = reference-like:
+ *  moves peak up to ~28 px/f with an early-peaking ease (quick start, clean landing), and the camera steps on the voice:
+ *  pass the timing phrases and every phrase start gets a quick 6-frame reframe (push-in, side nudge, or pull-out,
+ *  alternating). Reference channel: ~29 short camera moves per 10 s, median 6 frames, median peak ~20 px/f.
+ *  2 = hyper (punches twice as big, every phrase and every 2nd stressed word). */
+export type CamOpts = { phrases?: Phrase[]; energy?: number };
+export const camFromKeys = (keys: CamKey[], f: number, kicks: { f: number; amp?: number }[] = [], opt: CamOpts = {}): Cam => {
+  const energy = opt.energy ?? 1;
   let i = 0;
   while (i + 1 < keys.length && keys[i + 1].f <= f) i++;
   const k = keys[i], nx = keys[i + 1];
   let pos: V3, look: V3, fov = k.fov ?? 40, roll = k.roll ?? 0;
   let dur = nx ? (nx.cut ? 0 : nx.dur ?? 24) : 0;
-  if (nx && dur > 0 && !nx.whip) dur = Math.min(Math.max(dur, moveFrames(k, nx)), Math.max(dur, nx.f - k.f));
+  if (nx && dur > 0 && !nx.whip) dur = Math.min(Math.max(dur, moveFrames(k, nx, energy >= 1 ? 28 : 18)), Math.max(dur, nx.f - k.f));
   if (nx && dur > 0 && f > nx.f - dur) {
-    const raw = (f - (nx.f - dur)) / dur, t = nx.ease === "out" ? easeOut(raw) : nx.ease === "in" ? easeIn(raw) : smoother(raw);
+    const raw = (f - (nx.f - dur)) / dur;
+    // energy >= 1: the speed peaks at ~35 % of the move (quick start, long clean landing) instead of the middle
+    const t = nx.ease === "out" ? easeOut(raw) : nx.ease === "in" ? easeIn(raw) : energy >= 1 ? smoother(Math.pow(raw, 0.62)) : smoother(raw);
     // the move starts from where the hold had drifted to
     const st = crept(k, Math.max(0, nx.f - dur - k.f), i);
     pos = along([st.pos, ...(nx.via ?? []), nx.pos], t);
     look = lerp3(st.look, nx.look, t);
     fov = lerp(k.fov ?? 40, nx.fov ?? 40, t); roll = lerp(k.roll ?? 0, nx.roll ?? 0, t);
   } else { const st = crept(k, f - k.f, i); pos = st.pos; look = st.look; }
+  // beat punches: a quick reframe on every phrase start (and stressed words at energy 2), holding until the next one
+  if (opt.phrases && energy > 0) {
+    const ph = opt.phrases.filter((p) => p.f0 <= f && p.f0 > k.f);   // only phrases since this key: each shot starts clean
+    const beats: number[] = [];
+    for (const p of ph) { beats.push(p.f0); if (energy >= 2) (p.words ?? []).forEach((w, j) => { if (j % 2 === 1 && w.f <= f && w.f > p.f0 + 6) beats.push(w.f); }); }
+    beats.sort((a, b) => a - b);
+    const d = sub(look, pos), dist = len(d) || 1, side: V3 = [-d[2] / dist, 0, d[0] / dist], amp = energy >= 2 ? 1.8 : 1;
+    let push = 0, nud = 0, prevPush = 0, prevNud = 0;
+    beats.forEach((b, j) => {
+      const kind = j % 3, dir = hash(j, b) < 0.5 ? -1 : 1, t = easeOut(prog(f, b, b + 7));   // cubic: firm start, no jolt
+      prevPush = push; prevNud = nud;
+      if (kind === 0) push = prevPush + 0.06 * amp; else if (kind === 1) nud = prevNud + dir * 0.022 * amp; else push = prevPush - 0.04 * amp;
+      push = lerp(prevPush, push, t); nud = lerp(prevNud, nud, t);
+    });
+    const pz = Math.max(-0.1, Math.min(0.3, push));
+    pos = [pos[0] + d[0] * pz + side[0] * nud * dist, pos[1] + d[1] * pz, pos[2] + d[2] * pz + side[2] * nud * dist];
+    look = [look[0] + side[0] * nud * dist, look[1], look[2] + side[2] * nud * dist];
+  }
   // whip cut: yaw the look around the camera, with motion blur from the angular speed
   const yawAt = (ff: number) => {
     const A = 38;   // degrees swept on each side of the cut
