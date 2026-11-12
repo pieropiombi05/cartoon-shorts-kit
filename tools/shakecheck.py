@@ -8,6 +8,8 @@
    re-randomised every frame, a puddle outline redrawn each frame). Flagged when a frame pops over 5 %, or 5+ frames
    pop over 3.5 % within a second (clean renders with fast moves over thin ink lines stay around 2-3 %).
    ("Earth without dust": rain drops on walls, up to 18 % of the frame at 34.9 s.)
+3. POPS: something that appears or vanishes in one frame with the camera still (a cage dropping in from nowhere, signs
+   popping up). Things should enter with a visible action over 8+ frames.
 Whip cuts and hard cuts are recognised and skipped.
 
 Usage: python3 tools/shakecheck.py out/<slug>.mp4      (works on any mp4, also a stills/life clip)
@@ -65,7 +67,25 @@ for i in range(len(pop)):
 # (thin ink lines crossing pixels during fast camera moves give ~2-3 % on clean renders: that is not a glitch)
 dense = np.convolve((pop > 0.035).astype(float), np.ones(30), "same")
 flick = [i + 1 for i in range(len(pop)) if pop[i] > 0.05 or (pop[i] > 0.035 and dense[i] >= 5)]
+# --- pops: something appears or vanishes in one frame while the camera is still, and stays changed (not a blink,
+# not a moving object). "Earth without spiders": a cage dropped in from nowhere, signs popped up.
+from scipy import ndimage
+step = []
+for i in range(2, n - 4):
+    if cut[i - 1] or abs(dx[i - 1]) > 0.5: continue
+    d = np.abs(G[i] - G[i - 1]) > 30
+    if d.mean() < 0.004: continue
+    m_ = ndimage.binary_opening(d & (np.abs(G[i + 3] - G[i - 1]) > 30))
+    lab, k = ndimage.label(m_)
+    if not k: continue
+    sz = ndimage.sum(m_, lab, range(1, k + 1)); j = int(np.argmax(sz))
+    if sz[j] / m_.size < 0.006: continue
+    if (np.abs(G[i - 1] - G[i - 2]) > 30)[lab == j + 1].mean() > 0.3: continue
+    step.append(i)
+step = [i for i in step if not ((i - 1 in step and i - 2 in step) or (i + 1 in step and i + 2 in step) or (i - 1 in step and i + 1 in step))]
 ok = True
+for a_, b_ in ranges(step, gap=10):
+    ok = False; print(f"FIX pop      {a_ / 30:5.1f}-{min(n, b_ - 29) / 30:5.1f} s: something appears or vanishes in a single frame (bring it in with a visible action over 8+ frames, or have it there from the start)")
 for a_, b_ in ranges(bad):
     ok = False; print(f"FIX sway/shake {a_ / 30:5.1f}-{min(n, b_) / 30:5.1f} s: the camera wobbles back and forth (remove continuous shake; kicks only, max 7 frames)")
 for a_, b_ in ranges(flick, gap=15):
