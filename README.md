@@ -173,7 +173,8 @@ big reveals; no white flashes.
 | `tools/finish.sh "Title" voice.mp3` | (LOOP_XFADE=N) master, encode H.264 CRF 17 + AAC, no-music version, QA |
 | `tools/qa.py video sheet` | frozen spans, black frames, loudness, loop seam, sheet |
 | `tools/framestats.py video` | every-frame motion/colour/detail stats + `vsReference` verdict vs the measured channel |
-| `tools/shakecheck.py video.mp4` | flags camera sway/shake and one-frame flicker (whips and cuts skipped) |
+| `node tools/lint.mjs [a-b]` | no-render scene check of every frame: characters cut by the frame edge, heads hidden behind geometry, standing inside objects, floating, popping in/out |
+| `tools/shakecheck.py video.mp4` | flags camera sway/shake, one-frame flicker, and things that pop in or out (whips and cuts skipped) |
 | `tools/emptycheck.py stills/a` | flags stills with big empty areas (reference: flat ~27 %, largest area ~10 %) |
 | `tools/tighten.py voice out.wav [--tempo]` | leading silence to 0.05 s, shorter pauses (no pause in the hook), optional pitch-safe speed-up |
 
