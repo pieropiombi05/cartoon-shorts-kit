@@ -16,8 +16,11 @@ epic (low string ostinato + pad + timpani, 90 bpm, minor), calm (soft pad + gloc
 
 SFX cues (work/cues.json): [{"t": 3.2, "kind": "whoosh", "gain": 1.0, "dur": 0.6, "pan": 0.0}, ...]
 kinds: whoosh, swoosh, thunk, stamp, ting, sting, rumble, crash, collapse, creak, crack, snap, splash, bubbles, pop,
-clink, rattle, step, steps, hammer, thump, oof, whoa, crowd, laugh, cheer, applause, birds, crickets, wind, water,
-flutter, tick, bell, gasp. Unknown kinds are an error (so typos don't silently vanish).
+clink, rattle, step, steps, hammer, thump, birds, crickets, wind, water, flutter, tick, bell.
+Unknown kinds are an error (so typos don't silently vanish).
+DISABLED (skipped with a warning): crowd, laugh, cheer, applause, oof, whoa, gasp. They are synthesized human voices and
+crowd noise, and the user found them horrible ("What If Earth Stopped Spinning", Nov 2026). People reacting is shown in
+the picture, not heard.
 """
 import sys, os, json, argparse, subprocess
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "audio"))
@@ -203,11 +206,16 @@ def make(kind, c, r):
     if kind not in K: raise SystemExit(f"unknown sfx kind '{kind}'. Known: {', '.join(sorted(K))}")
     return K[kind]()
 
+DISABLED = {"crowd", "laugh", "cheer", "applause", "oof", "whoa", "gasp"}
+
 def sfx():
     out = np.zeros((2, N))
     if not a.cues or not os.path.exists(a.cues): return out
     cues = json.load(open(a.cues))
     r = rng(a.seed + 1)
+    skipped = [c["kind"] for c in cues if c["kind"] in DISABLED]
+    if skipped: print(f"sfx: skipped {len(skipped)} disabled cue(s) ({', '.join(sorted(set(skipped)))}): synthesized voices/crowds are off")
+    cues = [c for c in cues if c["kind"] not in DISABLED]
     for c in cues:
         x = np.asarray(make(c["kind"], c, r), dtype=float)
         x = norm(x, 0.5) * c.get("gain", 1.0)

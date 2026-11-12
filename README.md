@@ -171,8 +171,9 @@ big reveals; no white flashes.
 | `tools/tighten.py voice out.wav [--tempo]` | leading silence to 0.05 s, shorter pauses (no pause in the hook), optional pitch-safe speed-up |
 
 Music moods: quirky, calm, mysterious, epic. SFX kinds: whoosh, swoosh, thunk, stamp, ting, sting, rumble, crash,
-collapse, creak, crack, snap, splash, bubbles, pop, clink, rattle, step, steps, hammer, thump, oof, whoa, crowd, laugh,
-cheer, applause, birds, crickets, wind, water, flutter, tick, bell, gasp.
+collapse, creak, crack, snap, splash, bubbles, pop, clink, rattle, step, steps, hammer, thump, birds, crickets, wind,
+water, flutter, tick, bell. Disabled (skipped with a warning): crowd, laugh, cheer, applause, oof, whoa, gasp, the
+synthesized voices and crowds sounded horrible.
 
 ## Measured reference look (`docs/reference/`)
 
