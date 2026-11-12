@@ -27,13 +27,11 @@ export const noise1 = (t: number, seed = 0) => {
 };
 
 // ---------------- characters ----------------
-/** breathing sway (degrees) + a slow head drift. Measured on the reference: with the camera quiet ~5 % of the pixels
- *  still change every frame and only ~4 % of those frames are fully still, so characters are never statues.
- *  Add acting() on top for the beats. amp 0 = fully still (only for a deliberate freeze). */
+/** breathing sway (degrees) + a slow head drift (the original kit values). amp 0 = fully still. */
 export const idle = (f: number, seed = 1, amp = 1) => {
   const t = f / FPS;
-  // slow breathing only (period ~4 s): faster or bigger sway reads as trembling next to the snapped poses
-  return { tilt: amp * (0.5 * Math.sin(t * 1.5 + seed * 2.1) + 0.25 * noise1(t * 0.35, seed)), headTilt: amp * 0.8 * noise1(t * 0.4, seed + 9) };
+  // the original kit idle (the look of the user's favourite "Earth stopped spinning" short): slow sway + head drift
+  return { tilt: amp * (1.2 * Math.sin(t * 1.7 + seed * 2.1) + 0.6 * noise1(t * 0.6, seed)), headTilt: amp * 2.0 * noise1(t * 0.8, seed + 9) };
 };
 
 /** automatic acting from the narration timeline (work/timing.json phrases): the character moves on EVERY phrase and
@@ -114,12 +112,12 @@ const len = (a: V3) => Math.hypot(a[0], a[1], a[2]);
 /** hold: slow push-in (creep) + slow sideways slide (drift) so the camera never stops dead (reference: holds are only
  *  ~7 % of frames; between moves the camera keeps drifting at ~1-2 px/f) */
 const crept = (k: CamKey, held: number, idx: number): { pos: V3; look: V3 } => {
-  const sec = held / FPS, c = Math.min(0.35, (k.creep ?? 0.06) * sec);
+  const sec = held / FPS, c = Math.min(0.35, (k.creep ?? 0.025) * sec);
   const pos = lerp3(k.pos, k.look, c);
   const d = sub(k.look, k.pos), dist = len(d) || 1;
   const side: V3 = [-d[2] / dist, 0, d[0] / dist];               // horizontal axis across the view
   const dir = hash(idx + 3, k.f) < 0.5 ? -1 : 1;
-  const s = (k.drift ?? 1) * dir * Math.min(0.12, 0.022 * sec) * dist;   // ~1.5 px/f at 720 wide, capped
+  const s = (k.drift ?? 0) * dir * Math.min(0.12, 0.022 * sec) * dist;   // off unless the key sets drift   // ~1.5 px/f at 720 wide, capped
   return { pos: [pos[0] + side[0] * s, pos[1], pos[2] + side[2] * s], look: [k.look[0] + side[0] * s * 0.7, k.look[1], k.look[2] + side[2] * s * 0.7] };
 };
 /** frames a move needs so its peak speed stays under `peak` px/frame at 720 wide (smootherstep peak = 1.875 x px / dur) */
@@ -138,19 +136,21 @@ export const moveFrames = (a: CamKey, b: CamKey, peak = 18) => {
  *  pass the timing phrases and every phrase start gets a 9-frame camera move that then holds (push-in and small orbit,
  *  alternating). Reference channel: ~29 short camera moves per 10 s, median 6 frames, median peak ~20 px/f.
  *  2 = hyper (moves 1.7x bigger). */
-export type CamOpts = { phrases?: Phrase[]; energy?: number };
+export type CamOpts = { phrases?: Phrase[]; energy?: number; limitPeak?: number };
 export const camFromKeys = (keys: CamKey[], f: number, kicks: { f: number; amp?: number }[] = [], opt: CamOpts = {}): Cam => {
-  const energy = opt.energy ?? 1;
+  const energy = opt.phrases ? opt.energy ?? 1 : 0;
   let i = 0;
   while (i + 1 < keys.length && keys[i + 1].f <= f) i++;
   const k = keys[i], nx = keys[i + 1];
   let pos: V3, look: V3, fov = k.fov ?? 40, roll = k.roll ?? 0;
-  let dur = nx ? (nx.cut ? 0 : nx.dur ?? 24) : 0;
-  if (nx && dur > 0 && !nx.whip) dur = Math.min(Math.max(dur, moveFrames(k, nx, energy >= 1 ? 28 : 18)), Math.max(dur, nx.f - k.f));
+  let dur = nx ? (nx.cut ? 0 : nx.dur ?? 30) : 0;
+  // opt-in only: stretch moves so their peak stays under limitPeak px/f (the default keeps the key's own dur: fast,
+  // dynamic moves are part of the look the user prefers)
+  if (nx && dur > 0 && !nx.whip && opt.limitPeak) dur = Math.min(Math.max(dur, moveFrames(k, nx, opt.limitPeak)), Math.max(dur, nx.f - k.f));
   if (nx && dur > 0 && f > nx.f - dur) {
     const raw = (f - (nx.f - dur)) / dur;
     // energy >= 1: the speed peaks at ~35 % of the move (quick start, long clean landing) instead of the middle
-    const t = nx.ease === "out" ? easeOut(raw) : nx.ease === "in" ? easeIn(raw) : energy >= 1 ? smoother(Math.pow(raw, 0.62)) : smoother(raw);
+    const t = nx.ease === "out" ? easeOut(raw) : nx.ease === "in" ? easeIn(raw) : smoother(raw);
     // the move starts from where the hold had drifted to
     const st = crept(k, Math.max(0, nx.f - dur - k.f), i);
     pos = along([st.pos, ...(nx.via ?? []), nx.pos], t);

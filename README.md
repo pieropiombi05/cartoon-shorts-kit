@@ -106,7 +106,14 @@ slowly toward `look` (default 0.042 of the distance per second); `cut: true` = h
 **Effects** (`lib/toon`): fxPuff (300x300), fxStars (420x210), fxBurst, fxSplash, fxCreak (300x300), fxRing, fxNote,
 fxBlob — or any Pen drawing of your own.
 
-**Never static, never empty** (built after a user short measured 60 % fully still frames and ~50 % flat area):
+**Default look = the classic kit** (what the user's favourite "What If Earth Stopped Spinning" short used): camera
+keys glide with their own `dur` (default 30 f, no automatic stretching, no drift), holds creep 0.025/s, characters use
+the original `idle()`. Everything below is OPTIONAL. In Nov 2026 the user found shorts built with all of it at once
+(dressed walls everywhere, crowds of extras, per-phrase acting and camera beats) worse than the classic look, so use
+these tools sparingly and only where a shot needs them. Camera opt-ins: `camFromKeys(keys, f, kicks, { phrases,
+energy, limitPeak })`, key `drift`, `whipCut`. The bar demo lives in `example/bar.ts`.
+
+**Optional: busier scenes** (built after a user short measured 60 % fully still frames and ~50 % flat area):
 - `acting(f, T.phrases, seed)` → `{tilt, headTilt, wave, hop}`: the character moves on EVERY phrase (anticipation, then an
   arm gesture, a lean, a hop or a head turn) and nods on words. Add it on top of `idle()` for every character on screen.
 - `@kit/props`: `dressWall(R, a, b, "bar"|"home"|"office"|"lab"|"shop"|"palace")` fills a whole wall edge to edge
